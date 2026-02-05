@@ -19,6 +19,16 @@ import { useConsciousnessStore } from '../../modules/consciousness'
 import { useProvidersStore } from '../../providers'
 import { useModsServerChannelStore } from './channel-server'
 
+function safeCloneContext(context: any) {
+  try {
+    return structuredClone(toRaw(context))
+  }
+  catch (error) {
+    console.warn('[ContextBridge] Failed to structuredClone context, using toRaw fallback:', error)
+    return null
+  }
+}
+
 export const useContextBridgeStore = defineStore('mods:api:context-bridge', () => {
   const mutex = new Mutex()
 
@@ -55,7 +65,9 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
           metadata: event.metadata,
           createdAt: Date.now(),
         }
+        console.log('[ContextBridgeStore] Received context:update event via channel server:', contextMessage)
         chatContext.ingestContextMessage(contextMessage)
+        console.log('[ContextBridgeStore] Broadcasting context message to other windows/tabs:', toRaw(contextMessage))
         broadcastContext(toRaw(contextMessage))
       }))
 
@@ -149,49 +161,82 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
           if (isProcessingRemoteStream)
             return
 
-          broadcastStreamEvent({ type: 'before-compose', message, sessionId: chatSession.activeSessionId, context: structuredClone(toRaw(context)) })
+          console.log('[ContextBridgeStore] onBeforeMessageComposed hook triggered', { message, context })
+          const safeContext = safeCloneContext(context)
+          if (!safeContext) {
+            console.warn('[ContextBridgeStore] onBeforeMessageComposed hook: context cloning failed, skipping broadcast.')
+            return
+          }
+          broadcastStreamEvent({ type: 'before-compose', message, sessionId: chatSession.activeSessionId, context: safeContext })
         }),
         chatOrchestrator.onAfterMessageComposed(async (message, context) => {
           if (isProcessingRemoteStream)
             return
 
-          broadcastStreamEvent({ type: 'after-compose', message, sessionId: chatSession.activeSessionId, context: structuredClone(toRaw(context)) })
+          console.log('[ContextBridgeStore] onAfterMessageComposed hook triggered', { message, context })
+          const safeContext = safeCloneContext(context)
+          if (!safeContext) {
+            console.warn('[ContextBridgeStore] onBeforeMessageComposed hook: context cloning failed, skipping broadcast.')
+            return
+          }
+          broadcastStreamEvent({ type: 'after-compose', message, sessionId: chatSession.activeSessionId, context: safeContext })
         }),
         chatOrchestrator.onBeforeSend(async (message, context) => {
           if (isProcessingRemoteStream)
             return
 
-          broadcastStreamEvent({ type: 'before-send', message, sessionId: chatSession.activeSessionId, context: structuredClone(toRaw(context)) })
+          console.log('[ContextBridgeStore] onBeforeSend hook triggered', { message, context })
+          const safeContext = safeCloneContext(context)
+          if (!safeContext) {
+            console.warn('[ContextBridgeStore] onBeforeMessageComposed hook: context cloning failed, skipping broadcast.')
+            return
+          }
+          broadcastStreamEvent({ type: 'before-send', message, sessionId: chatSession.activeSessionId, context: safeContext })
         }),
         chatOrchestrator.onAfterSend(async (message, context) => {
           if (isProcessingRemoteStream)
             return
 
-          broadcastStreamEvent({ type: 'after-send', message, sessionId: chatSession.activeSessionId, context: structuredClone(toRaw(context)) })
+          console.log('[ContextBridgeStore] onAfterSend hook triggered', { message, context })
+          const safeContext = safeCloneContext(context)
+          if (!safeContext) {
+            console.warn('[ContextBridgeStore] onBeforeMessageComposed hook: context cloning failed, skipping broadcast.')
+            return
+          }
+          broadcastStreamEvent({ type: 'after-send', message, sessionId: chatSession.activeSessionId, context: safeCloneContext(context) })
         }),
         chatOrchestrator.onTokenLiteral(async (literal, context) => {
           if (isProcessingRemoteStream)
             return
 
-          broadcastStreamEvent({ type: 'token-literal', literal, sessionId: chatSession.activeSessionId, context: structuredClone(toRaw(context)) })
+          console.log('[ContextBridgeStore] onTokenLiteral hook triggered', { literal, context })
+          const safeContext = safeCloneContext(context)
+          if (!safeContext) {
+            console.warn('[ContextBridgeStore] onBeforeMessageComposed hook: context cloning failed, skipping broadcast.')
+            return
+          }
+          broadcastStreamEvent({ type: 'token-literal', literal, sessionId: chatSession.activeSessionId, context: safeContext })
         }),
         chatOrchestrator.onTokenSpecial(async (special, context) => {
           if (isProcessingRemoteStream)
             return
 
-          broadcastStreamEvent({ type: 'token-special', special, sessionId: chatSession.activeSessionId, context: structuredClone(toRaw(context)) })
+          console.log('[ContextBridgeStore] onTokenSpecial hook triggered', { special, context })
+          broadcastStreamEvent({ type: 'token-special', special, sessionId: chatSession.activeSessionId, context: safeCloneContext(context) })
         }),
         chatOrchestrator.onStreamEnd(async (context) => {
           if (isProcessingRemoteStream)
             return
 
-          broadcastStreamEvent({ type: 'stream-end', sessionId: chatSession.activeSessionId, context: structuredClone(toRaw(context)) })
+          console.log('[ContextBridgeStore] onStreamEnd hook triggered', { context })
+          broadcastStreamEvent({ type: 'stream-end', sessionId: chatSession.activeSessionId, context: safeCloneContext(context) })
         }),
         chatOrchestrator.onAssistantResponseEnd(async (message, context) => {
           if (isProcessingRemoteStream)
             return
 
-          broadcastStreamEvent({ type: 'assistant-end', message, sessionId: chatSession.activeSessionId, context: structuredClone(toRaw(context)) })
+          console.log('[ContextBridgeStore] onAssistantResponseEnd hook triggered', { message, context })
+          broadcastStreamEvent({ type: 'assistant-end', message, sessionId: chatSession.activeSessionId, context: safeCloneContext(context) })
         }),
 
         chatOrchestrator.onAssistantMessage(async (message, _messageText, context) => {

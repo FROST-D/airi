@@ -17,6 +17,18 @@ export const useChatContextStore = defineStore('chat-context', () => {
   const contextHistory = ref<ContextHistoryEntry[]>([])
 
   function ingestContextMessage(envelope: ContextMessage) {
+    // if envelope contains base64 images or large data, consider stripping them out or summarizing before storing
+    // TODO
+
+    if (envelope && envelope.content && Array.isArray(envelope.content)) {
+      for (const part of envelope.content) {
+        if (part.type === 'image_url' && part.image_url && part.image_url.url && part.image_url.url.startsWith('data:image/')) {
+          // Optionally, we could replace the data URL with a placeholder or a hash
+          part.image_url.url = '[base64 image data omitted]'
+        }
+      }
+    }
+
     const sourceKey = getEventSourceKey(envelope)
     if (!activeContexts.value[sourceKey]) {
       activeContexts.value[sourceKey] = []

@@ -89,10 +89,12 @@ export const useVisionProcessingStore = defineStore('vision-processing', () => {
   }
 
   async function runTick() {
+    console.log('[VisionProcessingStore] runTick called, handler exists:', !!tickHandler.value, 'isProcessing:', isProcessing.value)
     if (!tickHandler.value)
       return
     if (isProcessing.value) {
       skippedTicks.value += 1
+      console.log('[VisionProcessingStore] Skipped tick (still processing), total skipped:', skippedTicks.value)
       return
     }
 
@@ -121,6 +123,7 @@ export const useVisionProcessingStore = defineStore('vision-processing', () => {
   }
 
   function startTicker(handler: VisionTickHandler) {
+    console.log('[VisionProcessingStore] startTicker called, isRunning:', isRunning.value)
     tickHandler.value = handler
     if (isRunning.value)
       return
@@ -129,10 +132,12 @@ export const useVisionProcessingStore = defineStore('vision-processing', () => {
     if (intervalHandle)
       clearInterval(intervalHandle)
 
+    console.log('[VisionProcessingStore] Running initial tick')
     void runTick()
     intervalHandle = setInterval(() => {
       void runTick()
     }, captureIntervalMs.value)
+    console.log('[VisionProcessingStore] Ticker started with interval:', captureIntervalMs.value, 'ms')
   }
 
   function stopTicker() {

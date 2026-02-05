@@ -31,6 +31,7 @@ export const useVisionOrchestratorStore = defineStore('vision-orchestrator', () 
   const lastWorkloadId = ref<VisionWorkloadId>('screen:interpret')
 
   async function processCapture(payload: VisionCapturePayload) {
+    console.debug('Processing vision capture:')
     if (!activeProvider.value || !activeModel.value)
       throw new Error('Vision model is not configured')
 
@@ -57,6 +58,7 @@ export const useVisionOrchestratorStore = defineStore('vision-orchestrator', () 
         },
       ]
 
+      console.debug('Publishing vision context update:', { text, content })
       modsServerChannelStore.sendContextUpdate({
         strategy: ContextUpdateStrategy.ReplaceSelf,
         text,

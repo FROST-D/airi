@@ -1,0 +1,23 @@
+docker run --gpus all -p 8880:8880 --memory 4g ghcr.io/remsky/kokoro-fastapi-gpu:latest
+#settings
+
+kokoro
+http://localhost:8880/v1
+af_bella
+
+
+docker rm -f whisper-stt 2>$null
+
+docker run -d `
+  --restart unless-stopped `
+  --name whisper-stt `
+  --memory 4g `
+  --memory-swap 4g `
+  --oom-kill-disable=false `
+  --pids-limit 512 `
+  --tmpfs /tmp:rw,noexec,nosuid,size=512m `
+  -v "$env:USERPROFILE\.cache\huggingface:/root/.cache/huggingface" `
+  --gpus all `
+  -p 5000:5000 `
+  docker.io/heimoshuiyu/whisper-fastapi:latest `
+  --model large-v3

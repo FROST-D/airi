@@ -38,8 +38,11 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
   ]
 
   async function initialize(options?: { token?: string, possibleEvents?: Array<keyof WebSocketEvents> }) {
+    console.debug('[CHANNEL-SERVER] Initializing WebSocket client')
     if (connected.value && client.value)
       return Promise.resolve()
+
+    console.debug('[CHANNEL-SERVER] Not connected, proceeding with initialization', initializing.value)
     if (initializing.value)
       return initializing.value
 
@@ -47,7 +50,12 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
       ...basePossibleEvents,
       ...(options?.possibleEvents ?? []),
     ]))
+    console.debug('[CHANNEL-SERVER] Possible events for WebSocket client:', possibleEvents)
 
+    console.debug('[CHANNEL-SERVER] Creating new WebSocket client', isStageTamagotchi, {
+      url: websocketUrl.value || defaultWebSocketUrl,
+      token: options?.token,
+    })
     initializing.value = new Promise<void>((resolve) => {
       client.value = new Client({
         name: isStageWeb() ? WebSocketEventSource.StageWeb : isStageTamagotchi() ? WebSocketEventSource.StageTamagotchi : WebSocketEventSource.StageWeb,
@@ -77,6 +85,7 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
       })
 
       client.value.onEvent('module:authenticated', (event) => {
+        console.debug('Received module:authenticated event:', event)
         if (event.data.authenticated) {
           connected.value = true
           flush()
@@ -122,13 +131,31 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
   }
 
   function send<C = undefined>(data: WebSocketEventOptionalSource<C>) {
-    if (!client.value && !initializing.value)
+    console.debug('[CHANNEL-SERVER] -> send:', data)
+    console.debug('[CHANNEL-SERVER] Client exists before send:', !!client.value, 'Connected:', connected.value)
+    console.debug('[CHANNEL-SERVER] Initializing state before send:', { initializing: !!initializing.value })
+    console.debug('[CHANNEL-SERVER] Client value:', client.value)
+    console.debug('[CHANNEL-SERVER] Pending send queue length:', pendingSend.value.length)
+    if (!client.value && !initializing.value) {
+      console.debug('[CHANNEL-SERVER] Initializing client before send')
       void initialize()
+    }
 
-    if (client.value && connected.value) {
+    // Sync reactive ref with client's actual state
+    const isActuallyConnected = client.value?.connected ?? false
+    if (isActuallyConnected && !connected.value) {
+      console.debug('[CHANNEL-SERVER] Syncing connected state: client is connected but ref was false')
+      connected.value = true
+      flush()
+    }
+
+    console.debug('[CHANNEL-SERVER] Client exists:', !!client.value, 'Connected:', connected.value, 'Client.connected:', isActuallyConnected)
+    if (client.value && (connected.value || isActuallyConnected)) {
+      console.debug('[CHANNEL-SERVER] Sending immediately:', data)
       client.value.send(data as WebSocketEvent)
     }
     else {
+      console.debug('[CHANNEL-SERVER] Queuing for later send:', data)
       pendingSend.value.push(data as WebSocketEvent)
     }
   }
@@ -169,6 +196,7 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
   }
 
   function sendContextUpdate(message: Omit<ContextUpdate, 'id' | 'contextId'> & Partial<Pick<ContextUpdate, 'id' | 'contextId'>>) {
+    console.debug('[CHANNEL-SERVER] -> sendContextUpdate:', message)
     const id = nanoid()
     send({ type: 'context:update', data: { id, contextId: id, ...message } })
   }
