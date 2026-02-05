@@ -71,6 +71,11 @@ live2d:
     title: Tắt theo dõi chuột cho mô hình
     button-disable:
       title: Tắt
+  fps:
+    title: FPS
+    description: Limit rendering frame rate
+    options:
+      unlimited: No Limit
 microphone: Micro
 models: Mô hình
 pages:
@@ -172,7 +177,7 @@ pages:
         description: Remove imported Live2D/VRM models.
         delete: Delete all models
       modules:
-        title: Modules
+        title: Các Mô-Đun
         description: Reset module preferences and credentials.
         reset: Reset module settings
       providers:
@@ -188,7 +193,7 @@ pages:
         delete: Delete all data
       desktop:
         title: Reset desktop settings & states
-        description: Clear AIRI desktop settings and runtime state.
+        description: Xóa các cài đặt và trạng thái thực thi của AIRI trên máy tính.
         reset: Reset desktop data
     confirmations:
       tooltip: Are you sure?
@@ -352,6 +357,7 @@ pages:
               stop:
                 label: Dừng
             select-voice:
+              loading: Loading model...
               required: Vui lòng chọn một giọng nói
           provider-voice-selection:
             custom_model_placeholder: Nhập tên mô hình tùy chỉnh...
@@ -601,6 +607,30 @@ pages:
           validation:
             error-missing-api-key: Vui lòng nhập khóa API để thử giọng.
         title: ElevenLabs
+      kokoro-local:
+        description: Local text-to-speech using Kokoro-82M.
+        fields:
+          field:
+            model:
+              label: Model Selection
+              description: Smaller models load faster but may have slightly lower quality.
+        models:
+          fp32-webgpu:
+            description: Full precision model using WebGPU - Recommended for supported devices
+          fp32:
+            description: Full precision model
+          fp16:
+            description: Half precision
+          q8:
+            description: 8-bit quantized
+          q4:
+            description: 4-bit quantized
+          q4f16:
+            description: 4-bit with FP16
+        playground:
+          default-text: Hello! This is a test of the Kokoro text-to-speech system.
+          title: Voice Playground
+        title: Kokoro TTS (Local)
       fireworks:
         description: fireworks.ai
         title: Fireworks.ai
@@ -615,6 +645,8 @@ pages:
       index-tts-vllm:
         description: https://index-tts.github.io/
         title: Bilibili / IndexTTS
+        callout_indextts2_unavailable_title: Limited Support
+        callout_indextts2_unavailable: Support for IndexTTS2 is currently unavailable. Please use IndexTTS.
       azure-ai-foundry:
         description: Azure AI Foundry
         title: Azure AI Foundry
@@ -639,6 +671,9 @@ pages:
       openai-compatible:
         description: Tương thích OpenAI
         title: OpenAI Compatible
+      n1n:
+        description: n1n.ai - High-performance AI API provider.
+        title: n1n
       openrouter:
         description: openrouter.ai
         title: OpenRouter
@@ -740,6 +775,41 @@ pages:
               use-magic-keys:
                 title: useMagicKeys
                 description: Test shortcuts
+              audio-record:
+                title: Audio Record
+                description: Test Audio related composables
+              background-gradient-blending:
+                title: Background Theme color blending
+                description: Test blending & theme
+              background-removal:
+                title: Background removal (WebGPU required)
+                description: Utility for background removal
+              chat:
+                title: Chat
+                description: Chat
+              gesture-circle:
+                title: Gesture Circle (Desktop only)
+                description: Test gesture recognition
+              image:
+                title: Image
+                description: Image
+              polaroid:
+                title: Polaroid
+                description: Utility for taking shots of models
+              context-flow:
+                description: Inspect incoming context updates and outgoing chat stream events
+              websocket-inspector:
+                title: WebSocket Inspector
+                description: Inspect raw WebSocket traffic
+              vibrant:
+                title: Color extract
+                description: Test color extraction
+              providers-transcription-realtime-aliyun-nls:
+                title: Aliyun Real-time Transcriber
+                description: Stream microphone audio to Aliyun NLS and inspect live transcripts
+              performance-playground:
+                title: Performance Playground
+                description: 'Test performance runtime: VRM expressions + TTS lip sync'
         theme-presets:
           presets:
             default:
@@ -865,6 +935,10 @@ vrm:
   skybox:
     skybox-intensity: Cường Độ SkyBox
     skybox-specular-mix: Độ Trộn Phản Chiếu
+websocket-secure-enabled:
+  title: Bật WebSocket Bảo Mật (WSS)
+  description: >-
+    Bật WSS (WebSocket Secure) để cho phép kết nối HTTPS cho di động (pocket) trong chế độ phát triển. Điều này sẽ tự động tạo chứng chỉ tự ký.
 wip:
   title: Work in Progress
   description: >-

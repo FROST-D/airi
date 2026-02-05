@@ -1,14 +1,14 @@
 {
   "publisher": "proj-airi",
-  "name": "@proj-airi/airi-plugin-vscode",
-  "displayName": "AIRI",
-  "version": "0.8.1-beta.12",
+  "name": "vscode-airi",
+  "displayName": "AIRI VSCode adapter",
+  "version": "0.8.4",
   "private": true,
-  "description": "VSCode extension that shares your coding context with AIRI",
+  "description": "Adapter that connects VSCode into Project AIRI",
   "repository": {
     "type": "git",
     "url": "https://github.com/moeru-ai/airi.git",
-    "directory": "plugins/airi-plugin-vscode"
+    "directory": "integrations/vscode/vscode-airi"
   },
   "categories": [
     "Other"
@@ -17,7 +17,7 @@
   "main": "./dist/extension.cjs",
   "icon": "res/logo.jpg",
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.108.1"
   },
   "activationEvents": [
     "onStartupFinished"
@@ -70,7 +70,7 @@
     "@guiiai/logg": "catalog:",
     "@moeru/std": "catalog:",
     "@proj-airi/server-sdk": "workspace:*",
-    "@types/vscode": "^1.107.0",
+    "@types/vscode": "^1.108.1",
     "es-toolkit": "catalog:",
     "injeca": "catalog:",
     "nanoid": "catalog:",

@@ -387,6 +387,8 @@ function formatRelativeTime(timestamp: number | null) {
 <route lang="yaml">
 meta:
   layout: settings
+  titleKey: settings.pages.modules.vision.title
+  subtitleKey: settings.title
   stageTransition:
     name: slide
 </route>

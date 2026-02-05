@@ -1,7 +1,7 @@
 {
   "name": "@proj-airi/electron-screen-capture",
   "type": "module",
-  "version": "0.8.1-beta.12",
+  "version": "0.8.4",
   "private": true,
   "description": "Screen capture",
   "author": {
@@ -49,6 +49,6 @@
     "@moeru/std": "catalog:",
     "async-mutex": "catalog:",
     "nanoid": "catalog:",
-    "vite": "catalog:rolldown-vite"
+    "vite": "catalog:"
   }
 }

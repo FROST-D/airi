@@ -26,6 +26,7 @@ withDefaults(defineProps<{
   live2dAutoBlinkEnabled?: boolean
   live2dForceAutoBlinkEnabled?: boolean
   live2dShadowEnabled?: boolean
+  live2dMaxFps?: number
 }>(), {
   paused: false,
   focusAt: () => ({ x: 0, y: 0 }),
@@ -37,6 +38,7 @@ withDefaults(defineProps<{
   live2dAutoBlinkEnabled: true,
   live2dForceAutoBlinkEnabled: false,
   live2dShadowEnabled: true,
+  live2dMaxFps: 0,
 })
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -46,7 +48,7 @@ const componentStateModel = defineModel<'pending' | 'loading' | 'mounted'>('mode
 const live2dCanvasRef = ref<InstanceType<typeof Live2DCanvas>>()
 
 const live2d = useLive2d()
-const { scale, position } = storeToRefs(live2d)
+const { position } = storeToRefs(live2d)
 
 watch([componentStateModel, componentStateCanvas], () => {
   componentState.value = (componentStateModel.value === 'mounted' && componentStateCanvas.value === 'mounted')
@@ -70,6 +72,7 @@ defineExpose({
       :width="width"
       :height="height"
       :resolution="2"
+      :max-fps="live2dMaxFps"
       max-h="100dvh"
     >
       <Live2DModel

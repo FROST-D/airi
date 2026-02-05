@@ -96,6 +96,12 @@ watch(activeSpeechProvider, async (newProvider) => {
   syncOpenAICompatibleSettings()
 })
 
+watch(activeSpeechModel, async () => {
+  if (activeSpeechProvider.value) {
+    await speechStore.loadVoicesForProvider(activeSpeechProvider.value)
+  }
+})
+
 // Function to generate speech
 async function generateTestSpeech() {
   if (!testText.value.trim() && !useSSML.value)
@@ -593,6 +599,8 @@ function updateCustomModelName(value: string | undefined) {
 <route lang="yaml">
 meta:
   layout: settings
+  titleKey: settings.pages.modules.speech.title
+  subtitleKey: settings.title
   stageTransition:
     name: slide
 </route>

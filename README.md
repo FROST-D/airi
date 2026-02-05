@@ -173,12 +173,12 @@ A Nix package for Tamagotchi is included. To run airi with Nix, first make sure 
 nix run github:moeru-ai/airi
 ```
 
-### Stage Capacitor (Mobile Version)
+### Stage Pocket (Mobile Version)
 
 Start the development server for the capacitor web version:
 
 ```shell
-pnpm dev:capacitor
+pnpm dev:pocket
 ```
 
 Check your IP address in the output of the command above:
@@ -200,6 +200,14 @@ CAPACITOR_DEV_SERVER_URL=https://<your-ip-address>:5273 pnpm open:ios
 ```
 
 Then Xcode will open and you can click the "Run" button to run the app on your iPhone.
+
+If you need to connect server channel on pocket in wireless mode, you need to start tamagotchi as root:
+
+```shell
+sudo pnpm dev:tamagotchi
+```
+
+Then enable secure websocket in tamagotchi `settings/system/general`.
 
 ### Documentation Site
 
