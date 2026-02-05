@@ -95,14 +95,6 @@
     "pre-commit": "pnpm nano-staged"
   },
   "nano-staged": {
-    "*.ts": "moeru-lint --fix",
-    "*.tsx": "moeru-lint --fix",
-    "*.vue": "moeru-lint --fix",
-    "*.js": "moeru-lint --fix",
-    "*.jsx": "moeru-lint --fix",
-    "*.json": "moeru-lint --fix",
-    "*.yaml": "moeru-lint --fix",
-    "*.yml": "moeru-lint --fix",
-    "*.md": "moeru-lint --fix"
+    "*": "moeru-lint --fix"
   }
 }

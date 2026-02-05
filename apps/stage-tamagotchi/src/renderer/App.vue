@@ -52,6 +52,7 @@ onMounted(() => updateThemeColor())
 const startWebSocketServer = useElectronEventaInvoke(electronStartWebSocketServer)
 
 onMounted(async () => {
+  console.debug('App.vue mounted - initializing stores')
   analyticsStore.initialize()
   cardStore.initialize()
   onboardingStore.initializeSetupCheck()

@@ -304,10 +304,12 @@ export function setupServerChannelHandlers() {
   log.log('setupServerChannelHandlers', { context })
 
   defineInvokeHandler(context, electronStartWebSocketServer, async (req) => {
+    console.debug('defineInvokeHandler - Received request to start WebSocket server setupServerChannel', { req })
     await setupServerChannel({ websocketSecureEnabled: req?.websocketSecureEnabled })
   })
 
   defineInvokeHandler(context, electronRestartWebSocketServer, async (req) => {
+    console.debug('defineInvokeHandler - Received request to restart WebSocket server restartServerChannel', { req })
     await restartServerChannel({ websocketSecureEnabled: req?.websocketSecureEnabled })
   })
 }
