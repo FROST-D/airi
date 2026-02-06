@@ -16,6 +16,8 @@ import { electronRestartWebSocketServer, electronStartWebSocketServer } from '..
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
 
 let serverInstance: { close: (closeActiveConnections?: boolean) => Promise<void> } | null = null
+let serverIsStarting: Promise<void> | null = null
+let serverIsRunning = false
 
 function getLocalIPs(): string[] {
   const interfaces = networkInterfaces()
@@ -193,90 +195,115 @@ async function getOrCreateCertificate() {
 export async function setupServerChannel(options?: { websocketSecureEnabled?: boolean }) {
   const log = useLogg('main/server-runtime').useGlobalConfig()
 
-  log.log('setting up server channel', { options })
+  // If server is already running, skip
+  if (serverIsRunning && serverInstance) {
+    log.log('Server is already running, skipping setup')
+    return
+  }
+
+  // If server is already starting, wait for that to complete
+  if (serverIsStarting) {
+    log.log('Server is already starting, waiting for it to complete')
+    return serverIsStarting
+  }
+
+  log.log('Setting up server channel', { options })
   const secureEnabled = options?.websocketSecureEnabled ?? false
 
-  try {
-    const serverRuntime = await import('@proj-airi/server-runtime')
-    const { plugin: ws } = await import('crossws/server')
-    const { serve } = await import('h3')
+  serverIsStarting = (async () => {
+    try {
+      const serverRuntime = await import('@proj-airi/server-runtime')
+      const { plugin: ws } = await import('crossws/server')
+      const { serve } = await import('h3')
 
-    const h3App = serverRuntime.setupApp()
+      const h3App = serverRuntime.setupApp()
 
-    const port = env.PORT ? Number(env.PORT) : 6121
-    const hostname = env.SERVER_RUNTIME_HOSTNAME || '0.0.0.0'
+      const port = env.PORT ? Number(env.PORT) : 6121
+      const hostname = env.SERVER_RUNTIME_HOSTNAME || '0.0.0.0'
 
-    // FIXME: should prompt user to grant permission to save certificate files on macOS
-    const tls = secureEnabled ? await getOrCreateCertificate() : undefined
+      // FIXME: should prompt user to grant permission to save certificate files on macOS
+      const tls = secureEnabled ? await getOrCreateCertificate() : undefined
 
-    const instance = serve(h3App.app, {
-      // @ts-expect-error - the .crossws property wasn't extended in types
-      plugins: [ws({ resolve: async req => (await h3App.app.fetch(req)).crossws })],
-      port,
-      hostname,
-      tls,
-      reusePort: true,
-      silent: true,
-      manual: true,
-      gracefulShutdown: {
-        forceTimeout: 0.5,
-        gracefulTimeout: 0.5,
-      },
-    })
-
-    serverInstance = {
-      close: async (closeActiveConnections = false) => {
-        log.log('closing all peers')
-        h3App.closeAllPeers()
-        log.log('closing server instance')
-        await instance.close(closeActiveConnections)
-        log.log('server instance closed')
-      },
-    }
-
-    const servePromise = instance.serve()
-    if (servePromise instanceof Promise) {
-      servePromise.catch((error) => {
-        const nodejsError = error as NodeJS.ErrnoException
-        if ('code' in nodejsError && nodejsError.code === 'EADDRINUSE') {
-          log.withError(error).warn('Port already in use, assuming server is already running')
-          return
-        }
-
-        log.withError(error).error('Error serving WebSocket server')
+      const instance = serve(h3App.app, {
+        // @ts-expect-error - the .crossws property wasn't extended in types
+        plugins: [ws({ resolve: async req => (await h3App.app.fetch(req)).crossws })],
+        port,
+        hostname,
+        tls,
+        reusePort: true,
+        silent: true,
+        manual: true,
+        gracefulShutdown: {
+          forceTimeout: 0.5,
+          gracefulTimeout: 0.5,
+        },
       })
-    }
 
-    const protocol = secureEnabled ? 'wss' : 'ws'
-    if (hostname === '0.0.0.0') {
-      const ips = getLocalIPs().filter(ip => ip !== '127.0.0.1' && ip !== '::1')
-      const targets = ips.length > 0 ? ips.join(', ') : 'localhost'
-      log.log(`@proj-airi/server-runtime started on ${protocol}://0.0.0.0:${port} (reachable via: ${targets})`)
-    }
-    else {
-      log.log(`@proj-airi/server-runtime started on ${protocol}://${hostname}:${port}`)
-    }
+      serverInstance = {
+        close: async (closeActiveConnections = false) => {
+          log.log('closing all peers')
+          h3App.closeAllPeers()
+          log.log('closing server instance')
+          await instance.close(closeActiveConnections)
+          log.log('server instance closed')
+          serverIsRunning = false
+        },
+      }
 
-    onAppBeforeQuit(async () => {
-      if (serverInstance && typeof serverInstance.close === 'function') {
-        try {
-          await serverInstance.close()
-          log.log('WebSocket server closed')
-        }
-        catch (error) {
+      const servePromise = instance.serve()
+      if (servePromise instanceof Promise) {
+        servePromise.catch((error) => {
           const nodejsError = error as NodeJS.ErrnoException
-          if ('code' in nodejsError && nodejsError.code === 'ERR_SERVER_NOT_RUNNING') {
+          if ('code' in nodejsError && nodejsError.code === 'EADDRINUSE') {
+            log.withError(error).warn('Port already in use, assuming server is already running')
+            serverIsRunning = true
             return
           }
 
-          log.withError(error).error('Error closing WebSocket server')
-        }
+          log.withError(error).error('Error serving WebSocket server')
+          serverIsRunning = false
+        })
       }
-    })
-  }
-  catch (error) {
-    log.withError(error).error('failed to start WebSocket server')
-  }
+
+      serverIsRunning = true
+
+      const protocol = secureEnabled ? 'wss' : 'ws'
+      if (hostname === '0.0.0.0') {
+        const ips = getLocalIPs().filter(ip => ip !== '127.0.0.1' && ip !== '::1')
+        const targets = ips.length > 0 ? ips.join(', ') : 'localhost'
+        log.log(`@proj-airi/server-runtime started on ${protocol}://0.0.0.0:${port} (reachable via: ${targets})`)
+      }
+      else {
+        log.log(`@proj-airi/server-runtime started on ${protocol}://${hostname}:${port}`)
+      }
+
+      onAppBeforeQuit(async () => {
+        if (serverInstance && typeof serverInstance.close === 'function') {
+          try {
+            await serverInstance.close()
+            log.log('WebSocket server closed')
+          }
+          catch (error) {
+            const nodejsError = error as NodeJS.ErrnoException
+            if ('code' in nodejsError && nodejsError.code === 'ERR_SERVER_NOT_RUNNING') {
+              return
+            }
+
+            log.withError(error).error('Error closing WebSocket server')
+          }
+        }
+      })
+    }
+    catch (error) {
+      log.withError(error).error('failed to start WebSocket server')
+      serverIsRunning = false
+    }
+    finally {
+      serverIsStarting = null
+    }
+  })()
+
+  return serverIsStarting
 }
 
 export async function restartServerChannel(options?: { websocketSecureEnabled?: boolean }) {
@@ -295,6 +322,8 @@ export async function restartServerChannel(options?: { websocketSecureEnabled?: 
   }
 
   serverInstance = null
+  serverIsRunning = false
+  serverIsStarting = null
   await setupServerChannel(options)
 }
 
