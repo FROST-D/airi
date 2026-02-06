@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Application } from '@pixi/app'
 import { extensions } from '@pixi/extensions'
+import { InteractionManager } from '@pixi/interaction'
 import { Ticker, TickerPlugin } from '@pixi/ticker'
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
@@ -53,7 +54,7 @@ async function initLive2DPixiStage(parent: HTMLDivElement) {
   Live2DModel.registerTicker(Ticker)
   extensions.add(TickerPlugin)
   // We handle the interactions (e.g., mouse-based focusing at) manually
-  // extensions.add(InteractionManager)
+  extensions.add(InteractionManager)
 
   pixiApp.value = new Application({
     width: props.width * props.resolution,
@@ -66,6 +67,8 @@ async function initLive2DPixiStage(parent: HTMLDivElement) {
 
   installRenderGuard(pixiApp.value)
   pixiApp.value.stage.scale.set(props.resolution)
+  pixiApp.value.stage.eventMode = 'static'
+  pixiApp.value.stage.interactiveChildren = true
 
   pixiAppCanvas.value = pixiApp.value.view
 
@@ -74,6 +77,7 @@ async function initLive2DPixiStage(parent: HTMLDivElement) {
   pixiAppCanvas.value.style.height = '100%'
   pixiAppCanvas.value.style.objectFit = 'cover'
   pixiAppCanvas.value.style.display = 'block'
+  pixiAppCanvas.value.style.pointerEvents = 'auto'
 
   parent.appendChild(pixiApp.value.view)
 

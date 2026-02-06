@@ -216,7 +216,7 @@ async function loadModel() {
     }
 
     const live2DModel = new Live2DModel<PixiLive2DInternalModel>()
-    await Live2DFactory.setupLive2DModel(live2DModel, { url: modelSrcRef.value, id: props.modelId }, { autoInteract: false })
+    await Live2DFactory.setupLive2DModel(live2DModel, { url: modelSrcRef.value, id: props.modelId }, { autoInteract: true })
     availableMotions.value.forEach((motion) => {
       if (motion.motionName in Emotion) {
         motionMap.value[motion.fileName] = motion.motionName
@@ -234,13 +234,22 @@ async function loadModel() {
     initialModelWidth.value = model.value.width
     initialModelHeight.value = model.value.height
     model.value.anchor.set(0.5, 0.5)
+    model.value.eventMode = 'static'
+    model.value.cursor = 'pointer'
+    model.value.interactive = true
     setScaleAndPosition()
 
     // --- Interaction
 
     model.value.on('hit', (hitAreas) => {
-      if (model.value && hitAreas.includes('body'))
-        model.value.motion('tap_body')
+      console.debug('Model.vue -> Model hit areas:', hitAreas)
+      hitAreas = hitAreas.map(area => area.toLowerCase())
+      if (hitAreas.includes('head')) {
+        currentMotion.value = { group: 'FlickUp', index: 0 }
+      }
+      if (hitAreas.includes('body')) {
+        currentMotion.value = { group: 'Tap@Body', index: 0 }
+      }
     })
 
     // --- Motion
@@ -377,9 +386,22 @@ async function loadModel() {
 }
 
 async function setMotion(motionName: string, index?: number) {
+  // write callstack if we are in development mode for better debugging
+  if (import.meta.env.DEV) {
+    console.debug('Model.vue -> setMotion called with motionName:', motionName, 'index:', index)
+    // console.debug(new Error().stack)
+  }
   // TODO: motion? Not every Live2D model has motion, we do need to help users to set motion
   if (!model.value) {
     console.warn('Cannot set motion: model not loaded')
+    return
+  }
+
+  // Check if the motion group exists in the model
+  const motionExists = availableMotions.value.some(m => m.motionName === motionName)
+  if (!motionExists) {
+    const availableGroups = [...new Set(availableMotions.value.map(m => m.motionName))].join(', ')
+    console.error(`Motion group '${motionName}' does not exist in this Live2D model. Available groups: ${availableGroups}`)
     return
   }
 
