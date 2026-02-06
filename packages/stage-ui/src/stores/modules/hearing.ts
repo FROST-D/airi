@@ -53,6 +53,7 @@ export const useHearingStore = defineStore('hearing-store', () => {
   const activeTranscriptionProvider = useLocalStorageManualReset('settings/hearing/active-provider', '')
   const activeTranscriptionModel = useLocalStorageManualReset('settings/hearing/active-model', '')
   const activeCustomModelName = useLocalStorageManualReset('settings/hearing/active-custom-model', '')
+  const activeLanguage = useLocalStorageManualReset('settings/hearing/active-language', 'en-US')
   const transcriptionModelSearchQuery = refManualReset<string>('')
   const autoSendEnabled = useLocalStorageManualReset<boolean>('settings/hearing/auto-send-enabled', false)
   const autoSendDelay = useLocalStorageManualReset<number>('settings/hearing/auto-send-delay', 2000) // Default 2 seconds
@@ -115,6 +116,7 @@ export const useHearingStore = defineStore('hearing-store', () => {
     activeTranscriptionProvider.reset()
     activeTranscriptionModel.reset()
     activeCustomModelName.reset()
+    activeLanguage.reset()
     transcriptionModelSearchQuery.reset()
     autoSendEnabled.reset()
     autoSendDelay.reset()
@@ -198,6 +200,7 @@ export const useHearingStore = defineStore('hearing-store', () => {
     activeTranscriptionModel,
     availableProvidersMetadata,
     activeCustomModelName,
+    activeLanguage,
     transcriptionModelSearchQuery,
     autoSendEnabled,
     autoSendDelay,
@@ -219,7 +222,7 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
   const error = ref<string>()
 
   const hearingStore = useHearingStore()
-  const { activeTranscriptionProvider, activeTranscriptionModel } = storeToRefs(hearingStore)
+  const { activeTranscriptionProvider, activeTranscriptionModel, activeLanguage } = storeToRefs(hearingStore)
   const providersStore = useProvidersStore()
   const streamingSession = shallowRef<{
     audioContext: AudioContext | Record<string, never>
@@ -499,6 +502,7 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
         const providerConfig = providersStore.getProviderConfig(providerId) || {}
         const language = (options?.providerOptions?.language as string)
           || (providerConfig.language as string)
+          || activeLanguage.value
           || 'en-US'
 
         // Web Speech API in continuous mode should run indefinitely - no idle timeout
@@ -641,6 +645,7 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
         {
           providerOptions: {
             abortSignal: abortController.signal,
+            language: activeLanguage.value,
             ...options?.providerOptions,
           },
         },
@@ -722,6 +727,12 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
           provider,
           model,
           new File([recording], 'recording.wav'),
+          undefined,
+          {
+            providerOptions: {
+              language: activeLanguage.value,
+            },
+          },
         )
         return result.mode === 'stream' ? await result.text : result.text
       }

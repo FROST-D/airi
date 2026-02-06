@@ -26,6 +26,7 @@ const {
   supportsModelListing,
   transcriptionModelSearchQuery,
   activeCustomModelName,
+  activeLanguage,
   autoSendEnabled,
   autoSendDelay,
 } = storeToRefs(hearingStore)
@@ -646,6 +647,50 @@ onUnmounted(() => {
               />
             </template>
           </div>
+        </div>
+
+        <!-- Language selection -->
+        <div v-if="activeTranscriptionProvider" class="border-t border-neutral-200 pt-4 dark:border-neutral-700">
+          <div class="mb-4">
+            <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-500">
+              Language Settings
+            </h2>
+            <div text="neutral-400 dark:neutral-400">
+              Select the language for transcription
+            </div>
+          </div>
+
+          <FieldSelect
+            v-model="activeLanguage"
+            label="Transcription Language"
+            description="The language to use for speech-to-text transcription. Select the language you'll be speaking."
+            :options="[
+              { label: 'English (US)', value: 'en-US' },
+              { label: 'English (UK)', value: 'en-GB' },
+              { label: 'English (Australia)', value: 'en-AU' },
+              { label: 'Español (España)', value: 'es-ES' },
+              { label: 'Español (México)', value: 'es-MX' },
+              { label: 'Français (France)', value: 'fr-FR' },
+              { label: 'Français (Canada)', value: 'fr-CA' },
+              { label: 'Deutsch', value: 'de-DE' },
+              { label: 'Italiano', value: 'it-IT' },
+              { label: 'Português (Brasil)', value: 'pt-BR' },
+              { label: 'Português (Portugal)', value: 'pt-PT' },
+              { label: '日本語', value: 'ja-JP' },
+              { label: '中文 (简体)', value: 'zh-CN' },
+              { label: '中文 (繁體)', value: 'zh-TW' },
+              { label: '한국어', value: 'ko-KR' },
+              { label: 'हिन्दी', value: 'hi-IN' },
+              { label: 'العربية', value: 'ar-SA' },
+              { label: 'Русский', value: 'ru-RU' },
+              { label: 'Nederlands', value: 'nl-NL' },
+              { label: 'Polski', value: 'pl-PL' },
+              { label: 'Svenska', value: 'sv-SE' },
+              { label: 'Türkçe', value: 'tr-TR' },
+            ]"
+            placeholder="Select transcription language"
+            layout="vertical"
+          />
         </div>
 
         <!-- Auto-send settings -->
