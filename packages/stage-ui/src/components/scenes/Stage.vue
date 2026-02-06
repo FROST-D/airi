@@ -310,6 +310,7 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
         ...provider.speech(model, providerConfig),
         input,
         voice: voice.id,
+        speed: Number(providerConfig?.speed) || 1.0,
       })
 
       if (signal.aborted || !res || res.byteLength === 0)
@@ -407,6 +408,7 @@ function setupAnalyser() {
 let currentChatIntent: ReturnType<typeof speechRuntimeStore.openIntent> | null = null
 
 chatHookCleanups.push(onBeforeMessageComposed(async () => {
+  console.debug('Chat message composition started, resetting stage state')
   playbackManager.stopAll('new-message')
 
   setupAnalyser()

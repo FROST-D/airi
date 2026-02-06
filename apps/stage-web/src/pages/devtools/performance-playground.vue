@@ -161,10 +161,20 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
       ? speechStore.generateSSML(request.text, activeSpeechVoice.value, { ...providerConfig, pitch: pitch.value })
       : request.text
 
+    // Collect voice settings from provider config
+    const voiceSettings: Record<string, any> = {}
+    if (providerConfig?.speed !== undefined) {
+      voiceSettings.speed = providerConfig.speed
+    }
+    if (providerConfig?.voiceSettings?.speed !== undefined) {
+      voiceSettings.speed = providerConfig.voiceSettings.speed
+    }
+
     const res = await generateSpeech({
       ...provider.speech(activeSpeechModel.value, providerConfig),
       input,
       voice: activeSpeechVoice.value.id,
+      ...voiceSettings,
     })
 
     if (signal.aborted)

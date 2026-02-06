@@ -21,3 +21,66 @@ docker run -d `
   -p 5000:5000 `
   docker.io/heimoshuiyu/whisper-fastapi:latest `
   --model large-v3
+
+
+
+
+#TTS TEST TEXT 
+
+Ecco un testo di test in italiano, pensato per provare pronuncia, pause, numeri, date, sigle e tono (senza SSML):
+
+---
+
+Ciao! Mi senti bene?
+Oggi vorrei fare un piccolo test della voce: calma, chiara, e naturale.
+
+Prima una frase corta: Va tutto bene.
+Poi una più lunga, con qualche pausa… perché le virgole aiutano, e rendono il ritmo più umano.
+
+Adesso proviamo i numeri: 1, 2, 3, poi 10, 17, 24, 100, e 1.500.
+Un orario: alle 18:30, oppure alle sei e mezza di sera.
+Una data: venerdì 6 febbraio 2026.
+
+Proviamo anche gli importi: 9,99 euro, 25 euro, e 1.200 euro.
+E un indirizzo: via Roma 12, a Milano.
+
+Ora qualche parola “difficile”:
+scegliere, gli, gnocchi, ragionevole, psicologia, striscioline, scioglilingua.
+
+Sigle e inglese: CPU, GPU, RTX 3090, Wi-Fi, Discord, e “download”.
+E una frase mista: *“Oggi faccio il deploy del bot su Discord, ma prima controllo la GPU.”*
+
+Infine, un po’ di emozione:
+Sono felice di sentirti… davvero.
+Ma se parlo troppo in fretta, dimmelo— rallento subito.
+
+Fine test. Dimmi: com’è la voce? È troppo veloce, troppo piatta, o va già meglio così?
+
+#TTS TEST TEXT EN
+
+Here’s an English test text designed to check pronunciation, pacing, numbers, dates, acronyms, and expressiveness (plain text, no SSML):
+
+Hello! Can you hear me clearly?
+Today I’d like to do a quick voice test—calm, clear, and natural.
+
+First, a short sentence: Everything is fine.
+Now a longer one, with a few pauses… because commas help, and they make the rhythm feel more human.
+
+Let’s try numbers: 1, 2, 3, then 10, 17, 24, 100, and 1,500.
+A time: 6:30 PM, or half past six in the evening.
+A date: Friday, February 6th, 2026.
+
+Now prices: $9.99, $25, and $1,200.
+And an address: 12 Rome Street, in Milan.
+
+Next, some tricky words:
+thoroughly, specifically, algorithm, scheduling, suspicious, statistics, synchronization.
+
+Acronyms and tech terms: CPU, GPU, RTX 3090, Wi-Fi, Discord, and “download”.
+And a mixed sentence: “I’m deploying the bot to Discord, but first I’m checking the GPU.”
+
+Finally, a bit of emotion:
+I’m genuinely happy to hear you.
+But if I’m speaking too fast, tell me— I’ll slow down right away.
+
+End of test. How does the voice sound: too fast, too flat, or already better like this?

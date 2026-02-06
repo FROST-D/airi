@@ -165,6 +165,7 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
       ...provider.speech(activeSpeechModel.value, providerConfig),
       input,
       voice: activeSpeechVoice.value.id,
+      speed: Number(providerConfig.speed) || 1.0,
     })
 
     if (signal.aborted)

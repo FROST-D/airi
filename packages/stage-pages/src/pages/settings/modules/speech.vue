@@ -16,6 +16,7 @@ import {
   FieldCheckbox,
   FieldInput,
   FieldRange,
+  FieldSelect,
   Skeleton,
   Textarea,
 } from '@proj-airi/ui'
@@ -34,6 +35,7 @@ const {
   activeSpeechModel,
   activeSpeechVoice,
   activeSpeechVoiceId,
+  activeLanguage,
   pitch,
   isLoadingSpeechProviderVoices,
   supportsModelListing,
@@ -162,10 +164,13 @@ async function generateTestSpeech() {
       ? ssmlText.value
       : speechStore.supportsSSML ? speechStore.generateSSML(testText.value, voice, { ...providerConfig, pitch: pitch.value }) : testText.value
 
+    console.log('Generating speech with params:', providerConfig)
+
     const response = await generateSpeech({
       ...provider.speech(model, providerConfig),
       input,
       voice: voice.id,
+      speed: Number(providerConfig.speed) || 1.0,
     })
 
     // Convert the response to a blob and create an object URL
@@ -516,9 +521,62 @@ function updateCustomModelName(value: string | undefined) {
           </div>
         </div>
       </div>
+
+      <!-- Language selection -->
+      <div v-if="activeSpeechProvider" class="border-t border-neutral-200 pt-4 dark:border-neutral-700">
+        <div class="mb-4">
+          <h2 class="text-lg text-neutral-500 md:text-2xl dark:text-neutral-500">
+            Language Settings
+          </h2>
+          <div text="neutral-400 dark:neutral-400">
+            Select the language for text-to-speech generation
+          </div>
+        </div>
+
+        <FieldSelect
+          v-model="activeLanguage"
+          label="Speech Language"
+          description="The language to use for text-to-speech generation. The model will generate speech in the selected language."
+          :options="[
+            { label: 'English (US)', value: 'en-US' },
+            { label: 'English (UK)', value: 'en-GB' },
+            { label: 'English (Australia)', value: 'en-AU' },
+            { label: 'Español (España)', value: 'es-ES' },
+            { label: 'Español (México)', value: 'es-MX' },
+            { label: 'Français (France)', value: 'fr-FR' },
+            { label: 'Français (Canada)', value: 'fr-CA' },
+            { label: 'Deutsch', value: 'de-DE' },
+            { label: 'Italiano', value: 'it-IT' },
+            { label: 'Português (Brasil)', value: 'pt-BR' },
+            { label: 'Português (Portugal)', value: 'pt-PT' },
+            { label: '日本語', value: 'ja-JP' },
+            { label: '中文 (简体)', value: 'zh-CN' },
+            { label: '中文 (繁體)', value: 'zh-TW' },
+            { label: '한국어', value: 'ko-KR' },
+            { label: 'हिन्दी', value: 'hi-IN' },
+            { label: 'العربية', value: 'ar-SA' },
+            { label: 'Русский', value: 'ru-RU' },
+            { label: 'Nederlands', value: 'nl-NL' },
+            { label: 'Polski', value: 'pl-PL' },
+            { label: 'Svenska', value: 'sv-SE' },
+            { label: 'Türkçe', value: 'tr-TR' },
+          ]"
+          placeholder="Select speech language"
+          layout="vertical"
+        />
+      </div>
     </div>
 
     <div flex="~ col gap-6" class="w-full md:w-[60%]">
+      <!-- Live2D Character Preview with Lipsync -->
+      <div class="relative aspect-video w-full overflow-hidden rounded-xl" bg="neutral-100 dark:neutral-900">
+        <Live2DScene
+          ref="sceneRef"
+          :mouth-open-size="mouthOpenSize"
+          :mouth-smoothing="mouthSmoothing"
+        />
+      </div>
+
       <div w-full rounded-xl>
         <h2 class="mb-4 text-lg text-neutral-500 md:text-2xl dark:text-neutral-400" w-full>
           <div class="inline-flex items-center gap-4">

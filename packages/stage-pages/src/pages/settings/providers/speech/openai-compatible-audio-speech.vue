@@ -126,26 +126,33 @@ async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: bo
   )
 }
 
-watch(speed, async () => {
-  if (!providers.value[providerId])
-    providers.value[providerId] = {}
-  providers.value[providerId].speed = speed.value
+watch(speed, async (newSpeed, oldSpeed) => {
+  // Prevent circular updates - only update config if this is a real change
+  if (oldSpeed !== undefined && Math.abs(newSpeed - oldSpeed) > 0.001) {
+    const providerConfig = providersStore.getProviderConfig(providerId)
+    if (!providerConfig)
+      return
+    // Write to the same location that the deep watcher reads from
+    if (!providerConfig.voiceSettings)
+      providerConfig.voiceSettings = {}
+    providerConfig.voiceSettings.speed = newSpeed
+    // Also update the direct speed property for backward compatibility
+    providerConfig.speed = newSpeed
+  }
 })
 
 watch(model, () => {
-  // Ensure provider config exists
-  if (!providers.value[providerId])
-    providers.value[providerId] = {}
-  // Save model to provider config (this persists to localStorage automatically)
-  providers.value[providerId].model = model.value
+  const providerConfig = providersStore.getProviderConfig(providerId)
+  if (!providerConfig)
+    return
+  providerConfig.model = model.value
 })
 
 watch(voice, () => {
-  // Ensure provider config exists
-  if (!providers.value[providerId])
-    providers.value[providerId] = {}
-  // Save voice to provider config (this persists to localStorage automatically)
-  providers.value[providerId].voice = voice.value
+  const providerConfig = providersStore.getProviderConfig(providerId)
+  if (!providerConfig)
+    return
+  providerConfig.voice = voice.value
 })
 
 // Use the composable to get validation logic and state

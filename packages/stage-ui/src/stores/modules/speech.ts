@@ -29,6 +29,7 @@ export const useSpeechStore = defineStore('speech', () => {
   const speechProviderError = refManualReset<string | null>(null)
   const availableVoices = refManualReset<Record<string, VoiceInfo[]>>(() => ({}))
   const selectedLanguage = useLocalStorageManualReset<string>('settings/speech/language', 'en-US')
+  const activeLanguage = useLocalStorageManualReset<string>('settings/speech/active-language', 'en-US')
   const modelSearchQuery = refManualReset<string>('')
 
   // Computed properties
@@ -173,6 +174,7 @@ export const useSpeechStore = defineStore('speech', () => {
     const response = await generateSpeech({
       ...provider.speech(model, {
         ...providerConfig,
+        language: activeLanguage.value,
       }),
       input,
       voice,
@@ -251,6 +253,7 @@ export const useSpeechStore = defineStore('speech', () => {
     rate.reset()
     ssmlEnabled.reset()
     selectedLanguage.reset()
+    activeLanguage.reset()
     modelSearchQuery.reset()
     availableVoices.reset()
     speechProviderError.reset()
@@ -268,6 +271,7 @@ export const useSpeechStore = defineStore('speech', () => {
     rate,
     ssmlEnabled,
     selectedLanguage,
+    activeLanguage,
     isLoadingSpeechProviderVoices,
     speechProviderError,
     availableVoices,
