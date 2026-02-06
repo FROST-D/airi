@@ -39,23 +39,34 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
 
   async function initialize(options?: { token?: string, possibleEvents?: Array<keyof WebSocketEvents> }) {
     console.debug('[CHANNEL-SERVER] Initializing WebSocket client')
-    if (connected.value && client.value)
-      return Promise.resolve()
 
-    console.debug('[CHANNEL-SERVER] Not connected, proceeding with initialization', initializing.value)
-    if (initializing.value)
+    // If client already exists and is connected, we're done
+    if (connected.value && client.value) {
+      console.debug('[CHANNEL-SERVER] Already connected, skipping initialization')
+      return Promise.resolve()
+    }
+
+    // If client exists but not connected, wait for it to connect
+    if (client.value) {
+      console.debug('[CHANNEL-SERVER] Client exists but not connected, waiting for connection')
+      if (initializing.value) {
+        return initializing.value
+      }
+      return Promise.resolve()
+    }
+
+    // If already initializing, wait for that to complete
+    if (initializing.value) {
+      console.debug('[CHANNEL-SERVER] Already initializing, waiting...')
       return initializing.value
+    }
 
     const possibleEvents = Array.from(new Set<keyof WebSocketEvents>([
       ...basePossibleEvents,
       ...(options?.possibleEvents ?? []),
     ]))
-    console.debug('[CHANNEL-SERVER] Possible events for WebSocket client:', possibleEvents)
+    console.debug('[CHANNEL-SERVER] Creating new WebSocket client with possibleEvents:', possibleEvents)
 
-    console.debug('[CHANNEL-SERVER] Creating new WebSocket client', isStageTamagotchi, {
-      url: websocketUrl.value || defaultWebSocketUrl,
-      token: options?.token,
-    })
     initializing.value = new Promise<void>((resolve) => {
       client.value = new Client({
         name: isStageWeb() ? WebSocketEventSource.StageWeb : isStageTamagotchi() ? WebSocketEventSource.StageTamagotchi : WebSocketEventSource.StageWeb,
@@ -70,14 +81,16 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
         },
         onError: (error) => {
           connected.value = false
-          initializing.value = null
+          // Don't reset initializing.value immediately - let the client try to reconnect
+          // Only clear listeners to avoid duplicates on reconnect
           clearListeners()
 
           console.warn('WebSocket server connection error:', error)
         },
         onClose: () => {
           connected.value = false
-          initializing.value = null
+          // Don't reset initializing.value immediately - let the client try to reconnect
+          // Only clear listeners to avoid duplicates on reconnect
           clearListeners()
 
           console.warn('WebSocket server connection closed')
@@ -90,6 +103,11 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
           connected.value = true
           flush()
           initializeListeners()
+
+          // Mark initialization as complete
+          const currentInitializing = initializing.value
+          initializing.value = null
+
           resolve()
 
           // eslint-disable-next-line no-console
@@ -101,6 +119,8 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
         connected.value = false
       })
     })
+
+    return initializing.value
   }
 
   async function ensureConnected() {
@@ -131,32 +151,40 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
   }
 
   function send<C = undefined>(data: WebSocketEventOptionalSource<C>) {
-    console.debug('[CHANNEL-SERVER] -> send:', data)
-    console.debug('[CHANNEL-SERVER] Client exists before send:', !!client.value, 'Connected:', connected.value)
-    console.debug('[CHANNEL-SERVER] Initializing state before send:', { initializing: !!initializing.value })
-    console.debug('[CHANNEL-SERVER] Client value:', client.value)
-    console.debug('[CHANNEL-SERVER] Pending send queue length:', pendingSend.value.length)
-    if (!client.value && !initializing.value) {
-      console.debug('[CHANNEL-SERVER] Initializing client before send')
-      void initialize()
+    console.debug('[CHANNEL-SERVER] send() called with:', {
+      type: (data as any)?.type,
+      hasClient: !!client.value,
+      connected: connected.value,
+      isInitializing: !!initializing.value,
+      queueLength: pendingSend.value.length,
+    })
+
+    // Queue the message if not connected yet
+    if (!connected.value) {
+      console.debug('[CHANNEL-SERVER] Not connected, queuing message')
+      pendingSend.value.push(data as WebSocketEvent)
+
+      // Initialize if no client exists AND not already initializing
+      if (!client.value && !initializing.value) {
+        console.debug('[CHANNEL-SERVER] No client exists, starting initialization')
+        void initialize()
+      }
+      else if (client.value && !initializing.value) {
+        console.debug('[CHANNEL-SERVER] Client exists but not connected and not initializing - this is unexpected')
+      }
+      else if (initializing.value) {
+        console.debug('[CHANNEL-SERVER] Initialization in progress, message will be sent after connection')
+      }
+      return
     }
 
-    // Sync reactive ref with client's actual state
-    const isActuallyConnected = client.value?.connected ?? false
-    if (isActuallyConnected && !connected.value) {
-      console.debug('[CHANNEL-SERVER] Syncing connected state: client is connected but ref was false')
-      connected.value = true
-      flush()
-    }
-
-    console.debug('[CHANNEL-SERVER] Client exists:', !!client.value, 'Connected:', connected.value, 'Client.connected:', isActuallyConnected)
-    if (client.value && (connected.value || isActuallyConnected)) {
-      console.debug('[CHANNEL-SERVER] Sending immediately:', data)
+    // We're connected, send immediately
+    if (client.value) {
+      console.debug('[CHANNEL-SERVER] Connected, sending immediately')
       client.value.send(data as WebSocketEvent)
     }
     else {
-      console.debug('[CHANNEL-SERVER] Queuing for later send:', data)
-      pendingSend.value.push(data as WebSocketEvent)
+      console.warn('[CHANNEL-SERVER] Connected state is true but no client - this should not happen')
     }
   }
 
@@ -170,9 +198,24 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
     }
   }
 
-  function onContextUpdate(callback: (event: WebSocketBaseEvent<'context:update', ContextUpdate>) => void | Promise<void>) {
-    if (!client.value && !initializing.value)
-      void initialize()
+  async function onContextUpdate(callback: (event: WebSocketBaseEvent<'context:update', ContextUpdate>) => void | Promise<void>) {
+    console.debug('[CHANNEL-SERVER] onContextUpdate() called, checking client state')
+
+    // Ensure client is initialized before attaching listeners
+    if (!client.value) {
+      console.debug('[CHANNEL-SERVER] onContextUpdate: No client exists')
+      if (!initializing.value) {
+        console.debug('[CHANNEL-SERVER] onContextUpdate: Starting initialization')
+        await initialize()
+      }
+      else {
+        console.debug('[CHANNEL-SERVER] onContextUpdate: Waiting for existing initialization')
+        await initializing.value
+      }
+    }
+    else {
+      console.debug('[CHANNEL-SERVER] onContextUpdate: Client exists, attaching listener')
+    }
 
     client.value?.onEvent('context:update', callback as any)
 
@@ -181,12 +224,27 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
     }
   }
 
-  function onEvent<E extends keyof WebSocketEvents>(
+  async function onEvent<E extends keyof WebSocketEvents>(
     type: E,
     callback: (event: WebSocketBaseEvent<E, WebSocketEvents[E]>) => void | Promise<void>,
   ) {
-    if (!client.value && !initializing.value)
-      void initialize()
+    console.debug(`[CHANNEL-SERVER] onEvent('${type}') called, checking client state`)
+
+    // Ensure client is initialized before attaching listeners
+    if (!client.value) {
+      console.debug(`[CHANNEL-SERVER] onEvent('${type}'): No client exists`)
+      if (!initializing.value) {
+        console.debug(`[CHANNEL-SERVER] onEvent('${type}'): Starting initialization`)
+        await initialize()
+      }
+      else {
+        console.debug(`[CHANNEL-SERVER] onEvent('${type}'): Waiting for existing initialization`)
+        await initializing.value
+      }
+    }
+    else {
+      console.debug(`[CHANNEL-SERVER] onEvent('${type}'): Client exists, attaching listener`)
+    }
 
     client.value?.onEvent(type, callback as any)
 
