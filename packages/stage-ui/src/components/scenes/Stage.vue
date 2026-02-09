@@ -22,7 +22,7 @@ import { useBroadcastChannel } from '@vueuse/core'
 // import { embed } from '@xsai/embed'
 import { generateSpeech } from '@xsai/generate-speech'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useDelayMessageQueue, useEmotionsMessageQueue } from '../../composables/queues'
 import { llmInferenceEndToken } from '../../constants'
@@ -32,7 +32,7 @@ import { useChatOrchestratorStore } from '../../stores/chat'
 import { useAiriCardStore, useAutoCommentsStore } from '../../stores/modules'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useProvidersStore } from '../../stores/providers'
-import { useSettings } from '../../stores/settings'
+import { useSettings, useSettingsAudioDevice } from '../../stores/settings'
 import { useSpeechRuntimeStore } from '../../stores/speech-runtime'
 
 withDefaults(defineProps<{
@@ -69,6 +69,17 @@ const {
 const { mouthOpenSize } = storeToRefs(useSpeakingStore())
 const { audioContext } = useAudioContext()
 const currentAudioSource = ref<AudioBufferSourceNode>()
+const speechGainNode = ref<GainNode>()
+
+const settingsAudioDeviceStore = useSettingsAudioDevice()
+const { speechMuted } = storeToRefs(settingsAudioDeviceStore)
+
+// Watch speechMuted and update gain node
+watch(speechMuted, (muted) => {
+  if (speechGainNode.value) {
+    speechGainNode.value.gain.value = muted ? 0 : 1
+  }
+})
 
 const { onBeforeMessageComposed, onBeforeSend, onTokenLiteral, onTokenSpecial, onStreamEnd, onAssistantResponseEnd } = useChatOrchestratorStore()
 const chatHookCleanups: Array<() => void> = []
@@ -183,11 +194,18 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
   currentAudioSource.value = source
   source.buffer = item.audio
 
-  source.connect(audioContext.destination)
+  // Create audio chain with gain node for volume control
+  if (!speechGainNode.value) {
+    speechGainNode.value = audioContext.createGain()
+    speechGainNode.value.gain.value = speechMuted.value ? 0 : 1
+  }
+
+  source.connect(speechGainNode.value)
+  speechGainNode.value.connect(audioContext.destination)
   if (audioAnalyser.value)
-    source.connect(audioAnalyser.value)
+    speechGainNode.value.connect(audioAnalyser.value)
   if (lipSyncNode.value)
-    source.connect(lipSyncNode.value)
+    speechGainNode.value.connect(lipSyncNode.value)
 
   return new Promise<void>((resolve) => {
     let settled = false

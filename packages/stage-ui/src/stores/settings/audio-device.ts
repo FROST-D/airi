@@ -9,6 +9,7 @@ export const useSettingsAudioDevice = defineStore('settings-audio-devices', () =
 
   const selectedAudioInputPersist = useLocalStorageManualReset<string>('settings/audio/input', selectedAudioInputNonPersist.value)
   const selectedAudioInputEnabledPersist = useLocalStorageManualReset<boolean>('settings/audio/input/enabled', false)
+  const speechMuted = useLocalStorageManualReset<boolean>('settings/audio/speech-muted', false)
 
   watch(selectedAudioInputPersist, (newValue) => {
     selectedAudioInputNonPersist.value = newValue
@@ -47,6 +48,7 @@ export const useSettingsAudioDevice = defineStore('settings-audio-devices', () =
     deviceConstraints,
     selectedAudioInput: selectedAudioInputPersist,
     enabled: selectedAudioInputEnabledPersist,
+    speechMuted,
 
     stream,
 

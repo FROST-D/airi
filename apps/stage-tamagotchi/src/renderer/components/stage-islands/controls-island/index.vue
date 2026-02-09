@@ -23,16 +23,16 @@ const { t } = useI18n()
 const settingsAudioDeviceStore = useSettingsAudioDevice()
 const settingsStore = useSettings()
 const context = useElectronEventaContext()
-const { enabled } = storeToRefs(settingsAudioDeviceStore)
+const { enabled, speechMuted } = storeToRefs(settingsAudioDeviceStore)
 const { controlsIslandIconSize } = storeToRefs(settingsStore)
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
 const openChat = useElectronEventaInvoke(electronOpenChat)
 
 // Responsive icon & button sizing based on window height
 const { height: windowHeight } = useWindowSize()
-// Constants: assume each icon placeholder occupies 50px and there are 7 buttons
+// Constants: assume each icon placeholder occupies 50px and there are 8 buttons
 const ICON_PLACEHOLDER_PX = 50
-const BUTTON_COUNT = 7
+const BUTTON_COUNT = 8
 const LARGE_THRESHOLD = ICON_PLACEHOLDER_PX * BUTTON_COUNT
 
 // Grouped classes for icon / border / padding and combined style class
@@ -123,6 +123,19 @@ function refreshWindow() {
 
         <template #tooltip>
           {{ t('tamagotchi.stage.controls-island.open-hearing-controls') }}
+        </template>
+      </ControlButtonTooltip>
+
+      <ControlButtonTooltip>
+        <ControlButton :button-style="adjustStyleClasses.button" @click="speechMuted = !speechMuted">
+          <Transition name="fade" mode="out-in">
+            <div v-if="speechMuted" i-ph:speaker-slash :class="adjustStyleClasses.icon" text="neutral-800 dark:neutral-300" />
+            <div v-else i-ph:speaker-high :class="adjustStyleClasses.icon" text="neutral-800 dark:neutral-300" />
+          </Transition>
+        </ControlButton>
+
+        <template #tooltip>
+          {{ t('tamagotchi.stage.controls-island.toggle-speech-volume') }}
         </template>
       </ControlButtonTooltip>
 
