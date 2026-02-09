@@ -63,6 +63,7 @@ export function createWebSpeechAPIProvider(): TranscriptionProviderWithExtraOpti
 
   return {
     transcription: (model: string, extraOptions?: WebSpeechAPIExtraOptions) => {
+      console.log('[WebSpeechAPIProvider] transcription called with model:', model, 'extraOptions:', extraOptions)
       return {
         baseURL: 'about:blank', // Web Speech API doesn't use HTTP endpoints
         model: model || 'web-speech-api',

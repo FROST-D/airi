@@ -49,9 +49,7 @@ watch(dark, () => updateThemeColor(), { immediate: true })
 watch(route, () => updateThemeColor(), { immediate: true })
 onMounted(() => updateThemeColor())
 
-console.debug('[StageTamagotchi->App.vue] Setting up WebSocket server invoke')
 const startWebSocketServer = useElectronEventaInvoke(electronStartWebSocketServer)
-console.debug('[StageTamagotchi->App.vue] WebSocket server invoke set up successfully')
 
 onMounted(async () => {
   console.debug('[StageTamagotchi->App.vue] mounted - initializing stores')
@@ -68,7 +66,35 @@ onMounted(async () => {
   console.debug(' [StageTamagotchi->App.vue] Display Models store initialized')
   await settingsStore.initializeStageModel()
   console.debug(' [StageTamagotchi->App.vue] Settings store initialized')
-  await startWebSocketServer({ websocketSecureEnabled: settingsStore.websocketSecureEnabled })
+
+  console.debug(' [StageTamagotchi->App.vue] Starting WebSocket server...')
+  let startWebSocketServerResult
+  const maxRetries = 5
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.debug(` [StageTamagotchi->App.vue] WebSocket server start attempt ${attempt}/${maxRetries}`)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('WebSocket server start timeout after 10s')), 2000),
+      )
+      startWebSocketServerResult = await Promise.race([
+        startWebSocketServer({ websocketSecureEnabled: settingsStore.websocketSecureEnabled }),
+        timeoutPromise,
+      ])
+      console.debug(' [StageTamagotchi->App.vue] WebSocket server started successfully with result:', startWebSocketServerResult)
+      break // Success, exit retry loop
+    }
+    catch (error) {
+      console.error(` [StageTamagotchi->App.vue] Failed to start WebSocket server (attempt ${attempt}/${maxRetries}):`, error)
+      if (attempt === maxRetries) {
+        console.error(' [StageTamagotchi->App.vue] All WebSocket server start attempts failed')
+        // Continue with initialization even if WebSocket server fails
+      }
+      // Add a small delay between retries
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+  }
 
   console.debug(' [StageTamagotchi->App.vue] Initializing Mods Server Channel')
   await serverChannelStore.initialize({ possibleEvents: ['ui:configure'] }).catch(err => console.error('Failed to initialize Mods Server Channel in App.vue:', err))

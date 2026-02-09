@@ -48,18 +48,21 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
   let remoteStreamGuard: { sessionId: string, generation: number } | null = null
 
   async function initialize() {
+    console.debug('[ContextBridgeStore] Initializing context bridge store...')
     await mutex.acquire()
 
     try {
       let isProcessingRemoteStream = false
 
       const { stop } = watch(incomingContext, (event) => {
-        if (event)
+        if (event) {
+          console.debug('[ContextBridgeStore] Received context message via broadcast channel:', event)
           chatContext.ingestContextMessage(event)
+        }
       })
       disposeHookFns.value.push(stop)
 
-      disposeHookFns.value.push(serverChannelStore.onContextUpdate((event) => {
+      disposeHookFns.value.push(await serverChannelStore.onContextUpdate((event) => {
         const contextMessage: ContextMessage = {
           ...event.data,
           metadata: event.metadata,
@@ -71,7 +74,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
         broadcastContext(toRaw(contextMessage))
       }))
 
-      disposeHookFns.value.push(serverChannelStore.onEvent('input:text', async (event) => {
+      disposeHookFns.value.push(await serverChannelStore.onEvent('input:text', async (event) => {
         const {
           text,
           textRaw,
@@ -153,6 +156,86 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
               console.error('Error ingesting text input via context bridge:', err)
             }
           })
+        }
+      }))
+
+      console.log('[ContextBridgeStore] Registering input:text:voice event handler...')
+      disposeHookFns.value.push(await serverChannelStore.onEvent('input:text:voice', async (event) => {
+        console.log('[ContextBridgeStore] Received input:text:voice event via channel server:', event.data)
+        const {
+          transcription,
+          textRaw,
+          overrides,
+          contextUpdates,
+        } = event.data
+
+        console.log('[ContextBridgeStore] Processing voice input:', {
+          transcription,
+          hasProvider: !!activeProvider.value,
+          hasModel: !!activeModel.value,
+          provider: activeProvider.value,
+          model: activeModel.value,
+        })
+
+        const normalizedContextUpdates = contextUpdates?.map((update) => {
+          const id = update.id ?? nanoid()
+          const contextId = update.contextId ?? id
+          return {
+            ...update,
+            id,
+            contextId,
+          }
+        })
+
+        if (normalizedContextUpdates?.length) {
+          const createdAt = Date.now()
+          for (const update of normalizedContextUpdates) {
+            chatContext.ingestContextMessage({
+              ...update,
+              metadata: event.metadata,
+              createdAt,
+            })
+          }
+        }
+
+        if (activeProvider.value && activeModel.value) {
+          console.log('[ContextBridgeStore] Getting provider instance for voice input')
+          const chatProvider = await providersStore.getProviderInstance<ChatProvider>(activeProvider.value)
+
+          let messageText = transcription
+          const targetSessionId = overrides?.sessionId
+
+          if (overrides?.messagePrefix) {
+            messageText = `${overrides.messagePrefix}${transcription}`
+          }
+
+          console.log('[ContextBridgeStore] Acquiring lock for voice input ingestion')
+          navigator.locks.request('context-bridge:event:input:text:voice', async () => {
+            try {
+              console.log('[ContextBridgeStore] Starting voice input ingestion:', messageText)
+              await chatOrchestrator.ingest(messageText, {
+                model: activeModel.value,
+                chatProvider,
+                input: {
+                  type: 'input:text:voice',
+                  data: {
+                    ...event.data,
+                    transcription,
+                    textRaw,
+                    overrides,
+                    contextUpdates: normalizedContextUpdates,
+                  },
+                },
+              }, targetSessionId)
+              console.log('[ContextBridgeStore] Voice input ingestion completed')
+            }
+            catch (err) {
+              console.error('[ContextBridgeStore] Error ingesting voice input via context bridge:', err)
+            }
+          })
+        }
+        else {
+          console.warn('[ContextBridgeStore] Skipping voice input ingestion - no active provider or model configured')
         }
       }))
 

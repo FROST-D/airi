@@ -93,44 +93,56 @@ function certHasAllDomains(certPem: string, domains: string[]): boolean {
 }
 
 async function installCACertificate(caCert: string) {
+  const log = useLogg('main/server-runtime/cert-install').useGlobalConfig()
   const userDataPath = app.getPath('userData')
   const caCertPath = join(userDataPath, 'websocket-ca-cert.pem')
   writeFileSync(caCertPath, caCert)
 
   try {
     if (platform === 'darwin') {
+      log.log('Installing certificate to macOS keychain...')
       await x(`security`, ['add-trusted-cert', '-d', '-r', 'trustRoot', '-k', '/Library/Keychains/System.keychain', `"${caCertPath}"`], { nodeOptions: { stdio: 'ignore' } })
+      log.log('Certificate installed to macOS keychain')
     }
     else if (platform === 'win32') {
+      log.log('Installing certificate to Windows certificate store (may require UAC elevation)...')
       await x(`certutil`, ['-addstore', '-f', 'Root', `"${caCertPath}"`], { nodeOptions: { stdio: 'ignore' } })
+      log.log('Certificate installed to Windows certificate store')
     }
     else if (platform === 'linux') {
+      log.log('Installing certificate to Linux CA store...')
       const caDir = '/usr/local/share/ca-certificates'
       const caFileName = 'airi-websocket-ca.crt'
       try {
         writeFileSync(join(caDir, caFileName), caCert)
         await x('update-ca-certificates', [], { nodeOptions: { stdio: 'ignore' } })
+        log.log('Certificate installed to system CA store')
       }
       catch {
+        log.log('System CA store install failed, trying user CA store...')
         const userCaDir = join(env.HOME || '', '.local/share/ca-certificates')
         try {
           if (!existsSync(userCaDir)) {
             await x(`mkdir`, ['-p', `"${userCaDir}"`], { nodeOptions: { stdio: 'ignore' } })
           }
           writeFileSync(join(userCaDir, caFileName), caCert)
+          log.log('Certificate installed to user CA store')
         }
         catch {
+          log.log('Failed to install to user CA store')
           // Ignore errors
         }
       }
     }
   }
-  catch {
+  catch (error) {
+    log.withError(error).warn('Certificate installation failed (continuing anyway)')
     // Ignore installation errors
   }
 }
 
 async function generateCertificate() {
+  const log = useLogg('main/server-runtime/cert').useGlobalConfig()
   const userDataPath = app.getPath('userData')
   const caCertPath = join(userDataPath, 'websocket-ca-cert.pem')
   const caKeyPath = join(userDataPath, 'websocket-ca-key.pem')
@@ -138,12 +150,14 @@ async function generateCertificate() {
   let ca: { key: string, cert: string }
 
   if (existsSync(caCertPath) && existsSync(caKeyPath)) {
+    log.log('Using existing CA certificate')
     ca = {
       cert: readFileSync(caCertPath, 'utf-8'),
       key: readFileSync(caKeyPath, 'utf-8'),
     }
   }
   else {
+    log.log('Creating new CA certificate...')
     ca = await createCA({
       organization: 'AIRI',
       countryCode: 'US',
@@ -151,19 +165,24 @@ async function generateCertificate() {
       locality: 'Local',
       validity: 365,
     })
+    log.log('CA certificate created, saving to disk...')
     writeFileSync(caCertPath, ca.cert)
     writeFileSync(caKeyPath, ca.key)
 
+    log.log('Installing CA certificate to system trust store...')
     await installCACertificate(ca.cert)
+    log.log('CA certificate installation completed')
   }
 
   const domains = getCertificateDomains()
+  log.log('Generating server certificate for domains:', domains)
 
   const cert = await createCert({
     ca: { key: ca.key, cert: ca.cert },
     domains,
     validity: 365,
   })
+  log.log('Server certificate generated successfully')
 
   return {
     cert: cert.cert,
@@ -333,8 +352,18 @@ export function setupServerChannelHandlers() {
   log.log('setupServerChannelHandlers', { context })
 
   defineInvokeHandler(context, electronStartWebSocketServer, async (req) => {
-    console.debug('defineInvokeHandler - Received request to start WebSocket server setupServerChannel', { req })
-    await setupServerChannel({ websocketSecureEnabled: req?.websocketSecureEnabled })
+    const log = useLogg('main/server-runtime').useGlobalConfig()
+    log.log('Received request to start WebSocket server', { websocketSecureEnabled: req?.websocketSecureEnabled })
+
+    try {
+      await setupServerChannel({ websocketSecureEnabled: req?.websocketSecureEnabled })
+      log.log('WebSocket server setup completed successfully')
+      return { success: true }
+    }
+    catch (error) {
+      log.withError(error).error('Failed to setup WebSocket server')
+      return { success: false, error: String(error) }
+    }
   })
 
   defineInvokeHandler(context, electronRestartWebSocketServer, async (req) => {

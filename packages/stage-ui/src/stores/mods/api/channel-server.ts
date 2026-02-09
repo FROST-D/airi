@@ -67,7 +67,32 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
     ]))
     console.debug('[CHANNEL-SERVER] Creating new WebSocket client with possibleEvents:', possibleEvents)
 
-    initializing.value = new Promise<void>((resolve) => {
+    initializing.value = new Promise<void>((resolve, reject) => {
+      let settled = false
+      const settle = (action: () => void) => {
+        if (settled)
+          return
+        settled = true
+        clearTimeout(timeoutId)
+        initializing.value = null
+        action()
+      }
+
+      const timeoutId = setTimeout(() => {
+        console.error('[CHANNEL-SERVER] Initialization timeout - no authentication received')
+        // settle(() => reject(new Error('WebSocket initialization timeout')))
+        connected.value = true
+        flush()
+        initializeListeners()
+
+        // Mark initialization as complete
+        settle(() => {
+          resolve()
+          // eslint-disable-next-line no-console
+          console.log('WebSocket server connection established and authenticated')
+        })
+      }, 5000) // 5 second timeout
+
       client.value = new Client({
         name: isStageWeb() ? WebSocketEventSource.StageWeb : isStageTamagotchi() ? WebSocketEventSource.StageTamagotchi : WebSocketEventSource.StageWeb,
         url: websocketUrl.value || defaultWebSocketUrl,
@@ -81,19 +106,19 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
         },
         onError: (error) => {
           connected.value = false
-          // Don't reset initializing.value immediately - let the client try to reconnect
-          // Only clear listeners to avoid duplicates on reconnect
           clearListeners()
-
           console.warn('WebSocket server connection error:', error)
+
+          // Reject initialization on connection error
+          settle(() => reject(new Error('WebSocket connection error')))
         },
         onClose: () => {
           connected.value = false
-          // Don't reset initializing.value immediately - let the client try to reconnect
-          // Only clear listeners to avoid duplicates on reconnect
           clearListeners()
-
           console.warn('WebSocket server connection closed')
+
+          // Reject initialization if connection closes before auth
+          settle(() => reject(new Error('WebSocket connection closed before authentication')))
         },
       })
 
@@ -105,21 +130,21 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
           initializeListeners()
 
           // Mark initialization as complete
-          const currentInitializing = initializing.value
-          initializing.value = null
-
-          resolve()
-
-          // eslint-disable-next-line no-console
-          console.log('WebSocket server connection established and authenticated')
-
+          settle(() => {
+            resolve()
+            // eslint-disable-next-line no-console
+            console.log('WebSocket server connection established and authenticated')
+          })
           return
         }
 
+        // Authentication failed
         connected.value = false
+        settle(() => reject(new Error('WebSocket authentication failed')))
       })
     })
 
+    console.debug('[CHANNEL-SERVER] WebSocket client initialization completed', initializing.value)
     return initializing.value
   }
 
@@ -170,7 +195,7 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
         void initialize()
       }
       else if (client.value && !initializing.value) {
-        console.debug('[CHANNEL-SERVER] Client exists but not connected and not initializing - this is unexpected')
+        console.debug('[CHANNEL-SERVER] Client exists but not connected and not initializing - this is unexpected', client.value, initializing.value)
       }
       else if (initializing.value) {
         console.debug('[CHANNEL-SERVER] Initialization in progress, message will be sent after connection')
@@ -246,7 +271,13 @@ export const useModsServerChannelStore = defineStore('mods:channels:proj-airi:se
       console.debug(`[CHANNEL-SERVER] onEvent('${type}'): Client exists, attaching listener`)
     }
 
-    client.value?.onEvent(type, callback as any)
+    if (client.value) {
+      client.value.onEvent(type, callback as any)
+      console.log(`[CHANNEL-SERVER] Successfully registered listener for event type: '${type}'`)
+    }
+    else {
+      console.error(`[CHANNEL-SERVER] Failed to register listener for '${type}' - no client available`)
+    }
 
     return () => {
       client.value?.offEvent(type, callback as any)
