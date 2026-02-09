@@ -546,7 +546,7 @@ function updateCustomModelName(value: string | undefined) {
             { label: 'Français (France)', value: 'fr-FR' },
             { label: 'Français (Canada)', value: 'fr-CA' },
             { label: 'Deutsch', value: 'de-DE' },
-            { label: 'Italiano', value: 'it-IT' },
+            { label: 'Italiano', value: 'it' },
             { label: 'Português (Brasil)', value: 'pt-BR' },
             { label: 'Português (Portugal)', value: 'pt-PT' },
             { label: '日本語', value: 'ja-JP' },

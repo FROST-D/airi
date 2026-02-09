@@ -82,6 +82,9 @@ async function handleSpeechStart() {
     // Use both callbacks to support incremental updates and final transcript replacement.
     // ChatArea uses only onSentenceEnd to avoid re-adding deleted text.
     await transcribeForMediaStream(stream.value, {
+      providerOptions: {
+        language: activeLanguage.value,
+      },
       onSentenceEnd: (delta) => {
         transcriptions.value.push(delta)
       },
@@ -343,9 +346,12 @@ async function startSTTTest() {
     // Check if provider supports streaming input
     if (shouldUseStreamInput.value && stream.value) {
       testStatusMessage.value = 'Starting streaming transcription...'
-      console.info('Starting STT test with streaming input for provider:', activeTranscriptionProvider.value)
+      console.info('Starting STT test with streaming input for provider language:', activeTranscriptionProvider.value, activeLanguage.value)
 
       await transcribeForMediaStream(stream.value, {
+        providerOptions: {
+          language: activeLanguage.value,
+        },
         onSentenceEnd: (delta) => {
           if (delta && delta.trim()) {
             testStreamingText.value += `${delta} `
@@ -375,7 +381,7 @@ async function startSTTTest() {
     else {
       // Fallback to recording-based transcription
       testStatusMessage.value = 'Recording audio for transcription... (3 seconds)'
-      console.info('Starting STT test with recording-based transcription for provider:', activeTranscriptionProvider.value)
+      console.info('Starting STT test with recording-based transcription for provider:', activeTranscriptionProvider.value, activeLanguage.value)
 
       startRecord()
 
@@ -670,10 +676,10 @@ onUnmounted(() => {
               { label: 'English (Australia)', value: 'en-AU' },
               { label: 'Español (España)', value: 'es-ES' },
               { label: 'Español (México)', value: 'es-MX' },
-              { label: 'Français (France)', value: 'fr-FR' },
-              { label: 'Français (Canada)', value: 'fr-CA' },
-              { label: 'Deutsch', value: 'de-DE' },
-              { label: 'Italiano', value: 'it-IT' },
+              { label: 'Français (France)', value: 'fr' },
+              { label: 'Français (Canada)', value: 'fr' },
+              { label: 'Deutsch', value: 'de' },
+              { label: 'Italiano', value: 'it' },
               { label: 'Português (Brasil)', value: 'pt-BR' },
               { label: 'Português (Portugal)', value: 'pt-PT' },
               { label: '日本語', value: 'ja-JP' },

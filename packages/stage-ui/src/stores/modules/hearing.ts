@@ -130,6 +130,7 @@ export const useHearingStore = defineStore('hearing-store', () => {
     format?: 'json' | 'verbose_json',
     options?: HearingTranscriptionInvokeOptions,
   ): Promise<HearingTranscriptionResult> {
+    console.info(`[Hearing Store] Starting transcription with provider: ${providerId}, model: ${model}, language: ${activeLanguage.value}`, options?.providerOptions)
     const normalizedInput = (input instanceof File ? { file: input } : input ?? {}) as {
       file?: File
       inputAudioStream?: ReadableStream<ArrayBuffer>
@@ -183,12 +184,24 @@ export const useHearingStore = defineStore('hearing-store', () => {
       throw new Error('File input is required for transcription.')
     }
 
-    console.info(`Generating transcription with provider: ${provider.name}, model: ${model}, language: ${activeLanguage.value}, file: ${normalizedInput.file?.name}`, options?.providerOptions)
-    const response = await generateTranscription({
+    console.debug(`[Hearing Store] Generating transcription with provider: ${provider}, model: ${model}, language: ${activeLanguage.value}, file: ${normalizedInput.file?.name}`, options?.providerOptions, provider)
+    // console.debug('[Hearing Store] Transcription provider options:', provider.transcription(model, options?.providerOptions))
+    console.debug('[Hearing Store] Transcription provider options:', {
       ...provider.transcription(model, options?.providerOptions),
+      ...options?.providerOptions, // Explicitly merge providerOptions to ensure language and other params are included
       file: normalizedInput.file,
       responseFormat: format,
     })
+    console.debug('[Hearing Store] normalized input:', normalizedInput)
+
+    const response = await generateTranscription({
+      ...provider.transcription(model, options?.providerOptions),
+      ...options?.providerOptions, // Explicitly merge providerOptions to ensure language and other params are included
+      file: normalizedInput.file,
+      responseFormat: format,
+    })
+
+    console.debug('[Hearing Store] Transcription response:', response)
 
     return {
       mode: 'generate',
@@ -264,11 +277,36 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
       output[i] = value < 0 ? value * 0x8000 : value * 0x7FFF
     }
 
+    // Debug logging occasionally to check audio quality
+    if (Math.random() < 0.01) { // 1% of the time
+      const rms = Math.sqrt(buffer.reduce((sum, val) => sum + val * val, 0) / buffer.length)
+      const max = Math.max(...Array.from(buffer).map(Math.abs))
+      console.debug(`[Audio Debug] Buffer stats - Length: ${buffer.length}, RMS: ${rms.toFixed(4)}, Max: ${max.toFixed(4)}`)
+      if (max < 0.001) {
+        console.warn('[Audio Debug] Audio signal very weak or silent!')
+      }
+    }
+
     return output
   }
 
   async function createAudioStreamFromMediaStream(stream: MediaStream, sampleRate = DEFAULT_SAMPLE_RATE, onActivity?: () => void) {
+    // Debug: Log input stream characteristics
+    const audioTracks = stream.getAudioTracks()
+    console.info('[Audio Debug] Input MediaStream info:', {
+      audioTracks: audioTracks.length,
+      settings: audioTracks[0]?.getSettings(),
+      constraints: audioTracks[0]?.getConstraints(),
+      requestedSampleRate: sampleRate,
+    })
+
     const audioContext = new AudioContext({ sampleRate, latencyHint: 'interactive' })
+    console.info('[Audio Debug] AudioContext created:', {
+      sampleRate: audioContext.sampleRate,
+      state: audioContext.state,
+      baseLatency: audioContext.baseLatency,
+    })
+
     await audioContext.audioWorklet.addModule(vadWorkletUrl)
     const workletNode = new AudioWorkletNode(audioContext, 'vad-audio-worklet-processor')
 
@@ -282,10 +320,22 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
       },
     })
 
+    let bufferCount = 0
+    let totalSamples = 0
+
     workletNode.port.onmessage = ({ data }: MessageEvent<{ buffer?: Float32Array }>) => {
       const buffer = data?.buffer
       if (!buffer || !audioStreamController)
         return
+
+      bufferCount++
+      totalSamples += buffer.length
+
+      // Log every 100 buffers
+      if (bufferCount % 100 === 0) {
+        const duration = totalSamples / audioContext.sampleRate
+        console.debug(`[Audio Debug] Processed ${bufferCount} buffers, ${totalSamples} samples (~${duration.toFixed(2)}s of audio)`)
+      }
 
       const pcm16 = float32ToInt16(buffer)
       // Clone buffer to avoid retaining underlying ArrayBuffer references
@@ -638,6 +688,14 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
       bumpIdle()
 
       const model = activeTranscriptionModel.value
+      console.info('[Audio Debug] Starting transcription with config:', {
+        providerId,
+        model,
+        language: activeLanguage.value,
+        sampleRate: options?.sampleRate ?? DEFAULT_SAMPLE_RATE,
+        providerOptions: options?.providerOptions,
+      })
+
       const result = await hearingStore.transcription(
         providerId,
         provider,
@@ -722,6 +780,9 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
           throw new Error('Failed to initialize speech provider')
         }
 
+        // print file size in MB with 2 decimals
+        console.debug('[hearing] Recording size (MB):', (recording.size / (1024 * 1024)).toFixed(2))
+
         // Get model from configuration or use default
         const model = activeTranscriptionModel.value
         const result = await hearingStore.transcription(
@@ -730,11 +791,7 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
           model,
           new File([recording], 'recording.wav'),
           undefined,
-          {
-            providerOptions: {
-              language: activeLanguage.value,
-            },
-          },
+          { providerOptions: { language: activeLanguage.value } },
         )
         return result.mode === 'stream' ? await result.text : result.text
       }

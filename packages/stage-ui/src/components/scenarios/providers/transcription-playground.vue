@@ -108,6 +108,8 @@ onStopRecord(async (recording) => {
       audios.value.push(recording)
       // Clear any previous error message
       errorMessage.value = ''
+      // check file size
+      console.debug('Recording size (bytes):', recording.size)
       const result = await props.generateTranscription(new File([recording], 'recording.wav'))
       const text = result.mode === 'stream'
         ? await result.text

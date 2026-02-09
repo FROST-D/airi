@@ -71,7 +71,7 @@ const languageOptions = [
   { label: 'Spanish', value: 'es-ES' },
   { label: 'French', value: 'fr-FR' },
   { label: 'German', value: 'de-DE' },
-  { label: 'Italian', value: 'it-IT' },
+  { label: 'Italian', value: 'it' },
   { label: 'Portuguese', value: 'pt-BR' },
   { label: 'Japanese', value: 'ja-JP' },
   { label: 'Korean', value: 'ko-KR' },

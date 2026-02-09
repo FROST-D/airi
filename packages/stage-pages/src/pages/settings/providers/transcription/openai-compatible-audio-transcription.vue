@@ -73,6 +73,7 @@ const apiKeyConfigured = computed(() => !!providers.value[providerId]?.apiKey)
 
 // Generate transcription
 async function handleGenerateTranscription(file: File) {
+  console.debug('[Transcription Playground] Generating transcription for file:', file)
   const provider = await providersStore.getProviderInstance<TranscriptionProviderWithExtraOptions<string, any>>(providerId)
   if (!provider)
     throw new Error('Failed to initialize transcription provider')
