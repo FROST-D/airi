@@ -17,16 +17,34 @@ export class OpusDecoder extends Transform {
 
   _transform(chunk: Buffer, encoding: BufferEncoding, callback: (...args: any[]) => void) {
     try {
+      // Validate chunk size before decoding
+      if (!chunk || chunk.length === 0) {
+        callback()
+        return
+      }
+
+      // NOTICE: Create a copy to prevent ArrayBuffer detachment issues
+      // Node.js streams can reuse buffers, causing "detached ArrayBuffer" errors
+      const chunkCopy = Buffer.from(chunk)
+
       // Decode Opus chunk to PCM
-      const pcm = this.decoder.decode(chunk)
+      const pcm = this.decoder.decode(chunkCopy)
       if (pcm) {
         this.push(Buffer.from(pcm))
       }
       callback()
     }
     catch (error) {
-      this.emit('error', error)
-      callback(error)
+      // Skip invalid frames instead of crashing
+      // Common with network packet loss or invalid Opus data
+      if (error instanceof Error && error.message.includes('memory access out of bounds')) {
+        // Silently skip corrupted frames
+        callback()
+      }
+      else {
+        this.emit('error', error)
+        callback(error)
+      }
     }
   }
 

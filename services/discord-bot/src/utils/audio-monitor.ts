@@ -51,6 +51,8 @@ export class AudioMonitor {
       this.logger.log('Speaking stopped')
       if (this.lastFlagged < 0)
         return
+
+      this.logger.log('Invoking callback with audio buffer')
       callback(this.getBufferFromStart())
     })
     this.readable.on('speakingStarted', () => {

@@ -2,6 +2,7 @@ import type { Discord } from '@proj-airi/server-shared/types'
 import type { Interaction } from 'discord.js'
 
 import { env } from 'node:process'
+import { Readable } from 'node:stream'
 
 import { useLogg } from '@guiiai/logg'
 import { Client as AiriClient } from '@proj-airi/server-sdk'
@@ -9,6 +10,7 @@ import { ContextUpdateStrategy } from '@proj-airi/server-shared/types'
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js'
 
 import { handlePing, registerCommands, VoiceManager } from '../bots/discord/commands'
+import { openaiTextToSpeech } from '../pipelines/tts'
 
 const log = useLogg('DiscordAdapter')
 
@@ -86,6 +88,18 @@ export class DiscordAdapter {
       ],
       token: config.airiToken,
       url: config.airiUrl,
+      autoConnect: true,
+      autoReconnect: true,
+      maxReconnectAttempts: -1, // Unlimited reconnection attempts
+      onConnect: () => {
+        log.log('✓ AIRI WebSocket connected successfully')
+      },
+      onError: (error) => {
+        log.withError(error as Error).error('AIRI WebSocket connection error')
+      },
+      onClose: () => {
+        log.warn('AIRI WebSocket connection closed, will attempt to reconnect...')
+      },
     })
 
     this.voiceManager = new VoiceManager(this.discordClient, this.airiClient)
@@ -94,8 +108,11 @@ export class DiscordAdapter {
   }
 
   private setupEventHandlers(): void {
+    log.log('Setting up AIRI event handlers...')
+
     // Handle configuration from UI
     this.airiClient.onEvent('module:configure', async (event) => {
+      log.log('Received module:configure event')
       if (this.isReconnecting) {
         log.warn('A reconnect is already in progress, skipping this configuration event.')
         return
@@ -158,44 +175,128 @@ export class DiscordAdapter {
 
     // Handle output from AIRI system (IA response)
     this.airiClient.onEvent('output:gen-ai:chat:message', async (event) => {
+      log.log('=== Received output:gen-ai:chat:message event ===')
+      log.log('Event data structure:', JSON.stringify(event.data, null, 2))
+
       try {
         const message = (event.data as { message?: { content: string } }).message
-        const discordContext = (event.data)['gen-ai:chat'].input.data.discord
-        if (message?.content && discordContext?.channelId) {
-          const channel = await this.discordClient.channels.fetch(discordContext.channelId)
-          if (channel?.isTextBased() && 'send' in channel && typeof channel.send === 'function') {
-            const content = message.content
-            if (content.length <= 2000) {
-              await channel.send(content)
-            }
-            else {
-              let remaining = content
-              while (remaining.length > 0) {
-                let chunkSize = 2000
-                if (remaining.length > 2000) {
-                  // Try to split at the last newline before 2000
-                  const lastNewline = remaining.lastIndexOf('\n', 2000)
-                  if (lastNewline > -1) {
-                    chunkSize = lastNewline
-                  }
-                  else {
-                    // Fallback to last space
-                    const lastSpace = remaining.lastIndexOf(' ', 2000)
-                    if (lastSpace > -1)
-                      chunkSize = lastSpace
-                  }
-                }
+        log.log('Extracted message:', { hasMessage: !!message, content: message?.content })
 
-                const chunk = remaining.slice(0, chunkSize)
-                await channel.send(chunk)
-                remaining = remaining.slice(chunkSize).trim()
+        const genAiChat = (event.data as any)['gen-ai:chat']
+        log.log('gen-ai:chat data:', { hasGenAiChat: !!genAiChat })
+
+        const discordContext = genAiChat?.input?.data?.discord
+        log.log('Discord context:', {
+          hasContext: !!discordContext,
+          channelId: discordContext?.channelId,
+          guildId: discordContext?.guildId,
+        })
+
+        if (!message?.content) {
+          log.warn('No message content found in event')
+          return
+        }
+
+        if (!discordContext?.channelId) {
+          log.warn('No Discord channel ID found in event')
+          return
+        }
+
+        log.log('Fetching channel:', discordContext.channelId)
+        const channel = await this.discordClient.channels.fetch(discordContext.channelId)
+        log.log('Channel fetched:', {
+          hasChannel: !!channel,
+          isTextBased: channel?.isTextBased(),
+          type: channel?.type,
+        })
+
+        if (channel?.isTextBased() && 'send' in channel && typeof channel.send === 'function') {
+          const content = message.content
+          log.log('Sending message to Discord channel:', {
+            channelId: discordContext.channelId,
+            contentLength: content.length,
+            contentPreview: content.slice(0, 100),
+          })
+
+          if (content.length <= 2000) {
+            await channel.send(content)
+            log.log('Message sent successfully')
+          }
+          else {
+            log.log('Message exceeds 2000 chars, splitting...')
+            let remaining = content
+            let chunkCount = 0
+            while (remaining.length > 0) {
+              let chunkSize = 2000
+              if (remaining.length > 2000) {
+                // Try to split at the last newline before 2000
+                const lastNewline = remaining.lastIndexOf('\n', 2000)
+                if (lastNewline > -1) {
+                  chunkSize = lastNewline
+                }
+                else {
+                  // Fallback to last space
+                  const lastSpace = remaining.lastIndexOf(' ', 2000)
+                  if (lastSpace > -1)
+                    chunkSize = lastSpace
+                }
+              }
+
+              const chunk = remaining.slice(0, chunkSize)
+              await channel.send(chunk)
+              chunkCount++
+              log.log(`Sent chunk ${chunkCount}`)
+              remaining = remaining.slice(chunkSize).trim()
+            }
+            log.log(`All ${chunkCount} chunks sent successfully`)
+          }
+        }
+        else {
+          log.error('Channel is not text-based or does not have send method')
+        }
+
+        // Generate and play TTS if bot is in a voice channel
+        if (discordContext?.guildId) {
+          log.log('Checking for voice connection in guild:', discordContext.guildId)
+          const voiceConnection = this.voiceManager.getVoiceConnectionForGuild(discordContext.guildId)
+          if (voiceConnection) {
+            log.log('Bot is in voice channel, generating TTS for response', {
+              guildId: discordContext.guildId,
+              messageLength: message.content.length,
+              connectionStatus: voiceConnection.state.status,
+            })
+            try {
+              const audioBuffer = await openaiTextToSpeech(message.content)
+              if (audioBuffer) {
+                log.log('TTS audio generated successfully', {
+                  bufferSize: audioBuffer.length,
+                  bufferPreview: audioBuffer.slice(0, 20).toString('hex'),
+                })
+                // Convert buffer to readable stream
+                const audioStream = Readable.from(audioBuffer)
+                // Play the audio in the voice channel
+                await this.voiceManager.playAudioInGuild(discordContext.guildId, audioStream)
+                log.log('TTS audio playback initiated successfully')
+              }
+              else {
+                log.warn('TTS generation returned null/empty buffer')
               }
             }
+            catch (ttsError) {
+              log.withError(ttsError as Error).error('Failed to generate or play TTS')
+            }
           }
+          else {
+            log.log('Bot is not in a voice channel for this guild', { guildId: discordContext.guildId })
+          }
+        }
+        else {
+          log.log('No guildId in discord context - skipping TTS')
         }
       }
       catch (error) {
         log.withError(error as Error).error('Failed to send response to Discord')
+        log.log('Error details:', error)
       }
     })
 
@@ -282,6 +383,8 @@ export class DiscordAdapter {
             discord: normalizedDiscord,
           },
         })
+
+        log.log('Message sent to AIRI', { sessionId: targetSessionId, text: content })
       }
     })
 
@@ -300,12 +403,26 @@ export class DiscordAdapter {
           break
       }
     })
+
+    log.log('✓ All AIRI and Discord event handlers registered successfully')
   }
 
   async start(): Promise<void> {
     log.log('Starting Discord adapter...')
 
     try {
+      // Connect to AIRI WebSocket server
+      log.log('Connecting to AIRI WebSocket server...')
+      await this.airiClient.connect()
+      log.log('Connected to AIRI WebSocket server')
+
+      // Log AIRI connection status
+      log.log('AIRI Client configuration', {
+        url: this.airiClient.opts?.url || 'not set',
+        token: this.airiClient.opts?.token ? '***' : 'not set',
+        autoReconnect: true,
+      })
+
       // Log in to Discord if token is available
       if (this.discordToken) {
         await this.discordClient.login(this.discordToken)

@@ -12,6 +12,8 @@ import type {
   GuildMember,
 } from 'discord.js'
 
+import type { UserAudioData } from '../../../pipelines/tts'
+
 import { Buffer } from 'node:buffer'
 import { EventEmitter } from 'node:events'
 import { pipeline } from 'node:stream'
@@ -29,7 +31,7 @@ import {
 import { useLogg } from '@guiiai/logg'
 
 import { DECODE_SAMPLE_RATE } from '../../../constants/audio'
-import { openaiTranscribe } from '../../../pipelines/tts'
+import { multiUserTranscribeThenSummarize, openaiTranscribe } from '../../../pipelines/tts'
 import { convertOpusToWav } from '../../../utils/audio'
 import { AudioMonitor } from '../../../utils/audio-monitor'
 import { OpusDecoder } from '../../../utils/opus'
@@ -70,6 +72,7 @@ export class VoiceManager extends EventEmitter {
   > = new Map()
 
   private activeAudioPlayer: AudioPlayer | null = null
+  private activeSubscription: any = null
   private client: DiscordClient
   private airiClient: AiriClient
   private streams: Map<string, Readable> = new Map()
@@ -83,6 +86,23 @@ export class VoiceManager extends EventEmitter {
     super()
     this.client = client
     this.airiClient = airiClient
+
+    // Check for ffmpeg availability (needed for audio playback)
+    this.checkFfmpegAvailability()
+  }
+
+  private async checkFfmpegAvailability() {
+    try {
+      const { exec } = await import('node:child_process')
+      const { promisify } = await import('node:util')
+      const execAsync = promisify(exec)
+
+      await execAsync('ffmpeg -version')
+      this.logger.log('ffmpeg is available for audio processing')
+    }
+    catch (err) {
+      this.logger.warn('ffmpeg not found - TTS audio playback may not work. Please install ffmpeg.')
+    }
   }
 
   handleVoiceConnectionStateChange(channel: BaseGuildVoiceChannel, connection: VoiceConnection): (oldState: VoiceConnectionState, newState: VoiceConnectionState) => Promise<void> {
@@ -147,8 +167,12 @@ export class VoiceManager extends EventEmitter {
   handleAudioReceiveStreamEnd(channel: BaseGuildVoiceChannel): (userId: string) => void {
     return async (userId: string) => {
       const user = channel.members.get(userId)
-      if (!user?.user.bot) {
+      if (user && !user.user.bot) {
         this.logger.log(`User stopped speaking: ${user.displayName}`)
+        this.streams.get(userId)?.emit('speakingStopped')
+      }
+      else if (!user) {
+        this.logger.log(`User stopped speaking but is no longer in channel: ${userId}`)
         this.streams.get(userId)?.emit('speakingStopped')
       }
     }
@@ -180,15 +204,27 @@ export class VoiceManager extends EventEmitter {
     })
 
     try {
-      // Wait for either Ready or Signalling state
-      await Promise.race([
-        entersState(connection, VoiceConnectionStatus.Ready, 20_000),
-        entersState(connection, VoiceConnectionStatus.Signalling, 20_000),
-      ])
+      this.logger.log('Attempting to join voice channel...', { channelId: channel.id, guildId: channel.guild.id })
+
+      // Wait for Ready state with extended timeout and better error handling
+      try {
+        await entersState(connection, VoiceConnectionStatus.Ready, 30_000)
+        this.logger.log('Voice connection reached Ready state')
+      }
+      catch (readyError) {
+        // If Ready times out but we're at least Signalling, that's acceptable
+        if (connection.state.status === VoiceConnectionStatus.Signalling) {
+          this.logger.warn('Connection is Signalling but not yet Ready - proceeding anyway', { status: connection.state.status })
+        }
+        else {
+          this.logger.error('Connection failed to establish', { status: connection.state.status, error: readyError })
+          throw readyError
+        }
+      }
 
       // Log connection success
       this.logger.withField('state', connection.state.status).log('Voice connection established in state')
-      await interaction.reply(`Joined: ${channel.name}.`)
+      await interaction.editReply(`Joined: ${channel.name}.`)
 
       // Set up ongoing state change monitoring
       connection.on('stateChange', this.handleVoiceConnectionStateChange(channel, connection))
@@ -204,7 +240,7 @@ export class VoiceManager extends EventEmitter {
       await setSelfVoice(this.logger, channel.guild.members.me)
     }
     catch (error) {
-      this.logger.log('Failed to establish voice connection:', error)
+      this.logger.withError(error as Error).error('Failed to establish voice connection')
 
       connection.destroy()
       this.connections.delete(channel.id)
@@ -213,19 +249,141 @@ export class VoiceManager extends EventEmitter {
   }
 
   private getVoiceConnection(guildId: string) {
+    // First check local connections map (indexed by channel ID)
+    for (const [, connection] of this.connections) {
+      if (connection.joinConfig?.guildId === guildId) {
+        return connection
+      }
+    }
+
+    // Fallback to library function
     const connections = getVoiceConnections(this.client.user.id)
     if (!connections) {
-      this.logger.warn('No voice connections found')
+      this.logger.debug('No voice connections found via library')
       return
     }
     const connection = [...connections.values()].find(
       connection => connection.joinConfig.guildId === guildId,
     )
     if (!connection) {
-      this.logger.warn('No voice connection found for guild')
+      this.logger.debug('No voice connection found for guild via library')
     }
 
     return connection
+  }
+
+  getVoiceConnectionForGuild(guildId: string): VoiceConnection | undefined {
+    return this.getVoiceConnection(guildId)
+  }
+
+  async playAudioInGuild(guildId: string, audioStream: Readable): Promise<void> {
+    const connection = this.getVoiceConnection(guildId)
+    if (!connection) {
+      this.logger.warn(`No voice connection for guild ${guildId}`)
+      return
+    }
+
+    // Ensure connection is ready
+    if (connection.state.status !== VoiceConnectionStatus.Ready) {
+      this.logger.log(`Connection not ready (${connection.state.status}), waiting...`)
+      try {
+        await entersState(connection, VoiceConnectionStatus.Ready, 5000)
+      }
+      catch (err) {
+        this.logger.withError(err).error('Connection did not become ready in time')
+        return
+      }
+    }
+
+    this.logger.log(`Playing TTS audio in guild ${guildId}`, {
+      connectionStatus: connection.state.status,
+    })
+
+    // Wait a bit if bot is currently processing transcription
+    if (this.processingVoice) {
+      this.logger.log('Waiting for transcription processing to complete...')
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+
+    // Clear all pending audio buffers to prevent echo loop
+    this.logger.log('Clearing all audio buffers before TTS playback to prevent echo')
+    this.userStates.forEach((state) => {
+      state.buffers.length = 0
+      state.totalLength = 0
+    })
+
+    // Cancel any pending transcription timeout
+    if (this.transcriptionTimeout) {
+      clearTimeout(this.transcriptionTimeout)
+      this.transcriptionTimeout = null
+    }
+
+    this.cleanupAudioPlayer(this.activeAudioPlayer)
+    const audioPlayer = createAudioPlayer({
+      behaviors: {
+        noSubscriber: NoSubscriberBehavior.Play,
+      },
+    })
+
+    this.activeAudioPlayer = audioPlayer
+
+    const subscription = connection.subscribe(audioPlayer)
+    if (!subscription) {
+      this.logger.error('Failed to subscribe audio player to voice connection')
+      return
+    }
+
+    // Store subscription to prevent garbage collection
+    this.activeSubscription = subscription
+    this.logger.log('Audio player subscribed to voice connection')
+
+    const audioStartTime = Date.now()
+
+    // Create resource - using Arbitrary to let ffmpeg handle MP3 decoding
+    const resource = createAudioResource(audioStream, {
+      inputType: StreamType.Arbitrary,
+    })
+
+    audioPlayer.on('error', (error) => {
+      this.logger.withError(error).error('Audio player error')
+      this.cleanupAudioPlayer(audioPlayer)
+    })
+    audioPlayer.on('stateChange', (oldState: any, newState: { status: string }) => {
+      this.logger.log(`Audio player state: ${oldState.status} -> ${newState.status}`)
+      if (newState.status === 'playing') {
+        this.logger.log('TTS audio is now playing in voice channel')
+        // Clear buffers again while playing to prevent echo
+        this.userStates.forEach((state) => {
+          state.buffers.length = 0
+          state.totalLength = 0
+        })
+      }
+      if (newState.status === 'idle') {
+        const idleTime = Date.now()
+        this.logger.withField('elapsed', idleTime - audioStartTime).log(`TTS audio playback completed`)
+        // Give a small delay after playback before accepting audio input again
+        setTimeout(() => {
+          this.logger.log('Audio playback buffer delay complete - accepting audio input again')
+        }, 1000)
+        this.cleanupAudioPlayer(audioPlayer)
+      }
+    })
+
+    this.logger.log('Starting TTS audio playback', {
+      resourceReadable: !!resource.readable,
+      playerState: audioPlayer.state.status,
+      hasMetadata: !!resource.metadata,
+      streamType: 'Arbitrary (MP3)',
+    })
+
+    try {
+      audioPlayer.play(resource)
+      this.logger.log('Audio player play() called successfully')
+    }
+    catch (err) {
+      this.logger.withError(err).error('Failed to call audioPlayer.play()')
+      this.cleanupAudioPlayer(audioPlayer)
+    }
   }
 
   private async monitorMember(
@@ -243,12 +401,21 @@ export class VoiceManager extends EventEmitter {
       return
     }
 
+    // Increase max listeners to prevent warnings (we add multiple handlers)
+    receiveStream.setMaxListeners(20)
+
     const opusDecoder = new OpusDecoder(DECODE_SAMPLE_RATE, 1)
     const volumeBuffer: number[] = []
     const VOLUME_WINDOW_SIZE = 30
     const SPEAKING_THRESHOLD = 0.05
 
     const dataHandler = (pcmData: Buffer) => {
+      // IMPORTANT: Don't process any audio if bot is currently playing TTS
+      // This prevents echo loop from bot's own output
+      if (this.activeAudioPlayer && this.activeAudioPlayer.state.status === 'playing') {
+        return
+      }
+
       // Monitor the audio volume while the agent is speaking.
       // If the average volume of the user's audio exceeds the defined threshold, it indicates active speaking.
       // When active speaking is detected, stop the agent's current audio playback to avoid overlap.
@@ -276,32 +443,45 @@ export class VoiceManager extends EventEmitter {
     this.streams.set(userId, opusDecoder)
     this.connections.set(userId, connection as VoiceConnection)
 
-    const errorHandler = err => this.logger.withError(err).error('Opus decoding error')
-    const streamCloseHandler = () => {
-      this.logger.withField('displayName', member?.displayName).log('Voice stream closed')
+    const errorHandler = (err: Error) => {
+      // Log but don't crash on Opus decoding errors (common with packet loss)
+      if (!err.message.includes('memory access out of bounds')) {
+        this.logger.withError(err).error('Opus decoding error')
+      }
+    }
+
+    const cleanup = () => {
+      this.logger.withField('displayName', member?.displayName).log('Cleaning up voice stream')
+
+      opusDecoder.removeListener('data', dataHandler)
+      opusDecoder.removeListener('error', errorHandler)
+      opusDecoder.removeListener('close', cleanup)
+      opusDecoder.removeListener('end', cleanup)
+      receiveStream?.removeListener('close', cleanup)
+      receiveStream?.removeListener('end', cleanup)
+      receiveStream?.removeListener('error', cleanup)
+
+      // REVIEW: Stop the AudioMonitor when stream ends
+      this.stopMonitoringMember(userId)
 
       this.streams.delete(userId)
       this.connections.delete(userId)
     }
-    const closeHandler = () => {
-      this.logger.withField('displayName', member?.displayName).log('Opus decoder closed')
-
-      opusDecoder.removeListener('data', dataHandler)
-      opusDecoder.removeListener('error', errorHandler)
-      opusDecoder.removeListener('close', closeHandler)
-      receiveStream?.removeListener('close', streamCloseHandler)
-    }
 
     opusDecoder.on('data', dataHandler)
     opusDecoder.on('error', errorHandler)
-    opusDecoder.on('close', closeHandler)
-    receiveStream?.on('close', streamCloseHandler)
+    opusDecoder.on('close', cleanup)
+    opusDecoder.on('end', cleanup)
+    receiveStream?.on('close', cleanup)
+    receiveStream?.on('end', cleanup)
+    receiveStream?.on('error', cleanup)
 
     pipeline(receiveStream, opusDecoder, (err) => {
-      this.logger.withError(err).error('Opus decoding pipeline error')
-      if (err.message.includes('memory access out of bounds')) {
-        throw err
+      if (err) {
+        // Log pipeline errors but don't crash
+        this.logger.withError(err).error('Opus decoding pipeline error')
       }
+      cleanup()
     })
 
     this.logger.log(`Monitoring user: ${member.displayName}`)
@@ -375,6 +555,60 @@ export class VoiceManager extends EventEmitter {
     }, DEBOUNCE_TRANSCRIPTION_THRESHOLD)
   }
 
+  // NOTICE: Original single-user transcription methods preserved above
+  // New multi-user transcription methods implemented below
+
+  /**
+   * NEW: Multi-user transcription with summarization
+   * Waits for ALL users to stop talking before processing
+   */
+  async debouncedProcessAllUsersTranscription(
+    guildId: string,
+    channelId: string,
+  ) {
+    const DEBOUNCE_TRANSCRIPTION_THRESHOLD = 500 // wait for 0.5 seconds of silence from ALL users
+
+    if (this.activeAudioPlayer?.state?.status === 'idle') {
+      this.logger.log('Cleaning up idle audio player.')
+      this.cleanupAudioPlayer(this.activeAudioPlayer)
+    }
+
+    // If bot is talking or already processing, clear buffers and skip
+    // if (this.activeAudioPlayer || this.processingVoice) {
+    //   this.logger.log('Bot is currently talking or processing - clearing audio buffers to prevent echo loop')
+    //   this.userStates.forEach((state) => {
+    //     state.buffers.length = 0
+    //     state.totalLength = 0
+    //   })
+    //   return
+    // }
+
+    // Clear any existing timeout and set a new one
+    if (this.transcriptionTimeout) {
+      clearTimeout(this.transcriptionTimeout)
+    }
+
+    this.transcriptionTimeout = setTimeout(async () => {
+      // Double-check the bot isn't playing audio before we start processing
+      // if (this.activeAudioPlayer && this.activeAudioPlayer.state.status !== 'idle') {
+      //   this.logger.log('Bot started playing audio - aborting transcription to prevent echo')
+      //   this.userStates.forEach((state) => {
+      //     state.buffers.length = 0
+      //     state.totalLength = 0
+      //   })
+      //   return
+      // }
+
+      this.processingVoice = true
+      try {
+        await this.processAllUsersTranscription(guildId, channelId)
+      }
+      finally {
+        this.processingVoice = false
+      }
+    }, DEBOUNCE_TRANSCRIPTION_THRESHOLD)
+  }
+
   private async handleUserStream(
     userId: string,
     member: GuildMember,
@@ -383,6 +617,17 @@ export class VoiceManager extends EventEmitter {
     audioStream: Readable,
   ) {
     this.logger.log(`Starting audio monitor for user: ${userId}`)
+
+    // // REVIEW: Each speaking session creates a new stream, so we need a new monitor
+    // // Stop the old monitor if it exists (from a previous speaking session)
+    // if (this.activeMonitors.has(userId)) {
+    //   this.logger.log(`Replacing existing monitor for user: ${userId} with new monitor for new speaking session`)
+    //   const oldMonitor = this.activeMonitors.get(userId)
+    //   if (oldMonitor) {
+    //     oldMonitor.monitor.stop()
+    //   }
+    //   this.activeMonitors.delete(userId)
+    // }
 
     if (!this.userStates.has(userId)) {
       this.userStates.set(userId, {
@@ -401,14 +646,15 @@ export class VoiceManager extends EventEmitter {
         state!.totalLength += buffer.length
         state!.lastActive = Date.now()
 
-        this.debouncedProcessTranscription(userId, member, guildId, channelId)
+        // NEW: Use multi-user transcription that waits for ALL users to stop
+        this.debouncedProcessAllUsersTranscription(guildId, channelId)
       }
       catch (error) {
         this.logger.withError(error).withField('userId', userId).error('Error processing buffer')
       }
     }
 
-    const _ = new AudioMonitor(
+    const monitor = new AudioMonitor(
       audioStream,
       10000000,
       () => {
@@ -424,6 +670,12 @@ export class VoiceManager extends EventEmitter {
         await processBuffer(buffer)
       },
     )
+
+    // REVIEW: Store monitor so it can be properly stopped later
+    const channel = this.client.channels.cache.get(channelId) as BaseGuildVoiceChannel
+    if (channel) {
+      this.activeMonitors.set(userId, { channel, monitor })
+    }
   }
 
   private async processTranscription(
@@ -432,6 +684,12 @@ export class VoiceManager extends EventEmitter {
     guildId: string,
     channelId: string,
   ) {
+    // Safety check: don't process bot's own audio
+    if (member.user.bot) {
+      this.logger.log('Skipping transcription for bot user')
+      return
+    }
+
     const state = this.userStates.get(userId)
     if (!state || state.buffers.length === 0)
       return
@@ -446,6 +704,7 @@ export class VoiceManager extends EventEmitter {
       const wavBuffer = await convertOpusToWav(inputBuffer)
       const result = await openaiTranscribe(wavBuffer)
       const transcriptionText = result
+      console.debug('Transcription result:', transcriptionText)
 
       if (transcriptionText && isValidTranscription(transcriptionText)) {
         state.transcriptionText += transcriptionText
@@ -461,10 +720,12 @@ export class VoiceManager extends EventEmitter {
           data: { transcription: transcriptionText, discord: discordContext },
         })
 
-        this.airiClient.send({
-          type: 'input:text',
-          data: { text: transcriptionText, discord: discordContext },
-        })
+        // this.airiClient.send({
+        //   type: 'input:text',
+        //   data: { text: transcriptionText, discord: discordContext },
+        // })
+
+        this.logger.log('Transcription sent to AIRI', { text: transcriptionText })
       }
       if (state.transcriptionText.length) {
         this.cleanupAudioPlayer(this.activeAudioPlayer)
@@ -476,6 +737,132 @@ export class VoiceManager extends EventEmitter {
     }
     catch (error) {
       this.logger.withError(error).withField('userId', userId).error('Error processing transcription')
+    }
+  }
+
+  /**
+   * NEW: Process transcriptions from ALL users who have spoken
+   * Transcribes each user's audio and summarizes into a single message
+   */
+  private async processAllUsersTranscription(
+    guildId: string,
+    channelId: string,
+  ) {
+    this.logger.log('Processing multi-user transcription...')
+
+    // Collect all users with audio buffers
+    const usersWithAudio: UserAudioData[] = []
+    const channel = this.client.channels.cache.get(channelId) as BaseGuildVoiceChannel
+
+    if (!channel) {
+      this.logger.error('Channel not found for multi-user transcription')
+      return
+    }
+
+    for (const [userId, state] of this.userStates.entries()) {
+      if (state.buffers.length === 0) {
+        continue
+      }
+
+      try {
+        // Get member info
+        let member = channel.members.get(userId)
+        if (!member) {
+          try {
+            member = await channel.guild.members.fetch(userId)
+          }
+          catch (err) {
+            this.logger.withError(err).warn(`Could not fetch member ${userId}`)
+            continue
+          }
+        }
+
+        // IMPORTANT: Skip bot users (including our own bot)
+        if (member.user.bot) {
+          this.logger.log(`Skipping bot user: ${member.displayName}`)
+          state.buffers.length = 0
+          state.totalLength = 0
+          continue
+        }
+
+        // Concatenate all buffers for this user
+        const inputBuffer = Buffer.concat(state.buffers, state.totalLength)
+
+        // Convert Opus to WAV
+        const wavBuffer = await convertOpusToWav(inputBuffer)
+
+        usersWithAudio.push({
+          userId,
+          displayName: member.displayName,
+          wavBuffer,
+        })
+
+        // save the buffer to disk for debugging
+        // DEBUG:ONLY
+        const fsp = await import('node:fs/promises')
+        try {
+          await fsp.stat('./debug')
+        }
+        catch {
+          await fsp.mkdir('./debug')
+        }
+        await fsp.writeFile(`./debug/debug-${member.displayName}-${userId}.wav`, wavBuffer)
+
+        this.logger.log(`Prepared audio for user: ${member.displayName}`)
+
+        // Clear buffers for this user
+        state.buffers.length = 0
+        state.totalLength = 0
+      }
+      catch (error) {
+        this.logger.withError(error).withField('userId', userId).error('Error preparing user audio')
+      }
+    }
+
+    if (usersWithAudio.length === 0) {
+      this.logger.log('No users with valid audio buffers')
+      return
+    }
+
+    try {
+      // Transcribe all users and get summarized result
+      const summarizedText = await multiUserTranscribeThenSummarize(usersWithAudio)
+
+      if (summarizedText && isValidTranscription(summarizedText)) {
+        // Get a representative member for Discord context (use first speaker)
+        const firstUserId = usersWithAudio[0].userId
+        let member = channel.members.get(firstUserId)
+        if (!member) {
+          member = await channel.guild.members.fetch(firstUserId)
+        }
+
+        const discordContext = {
+          channelId,
+          guildId,
+          guildMember: member,
+        } satisfies Discord
+
+        this.airiClient.send({
+          type: 'input:text:voice',
+          data: { transcription: summarizedText, discord: discordContext },
+        })
+
+        // this.airiClient.send({
+        //   type: 'input:text',
+        //   data: { text: summarizedText, discord: discordContext },
+        // })
+
+        this.logger.log('Multi-user transcription sent to AIRI', {
+          text: summarizedText,
+          userCount: usersWithAudio.length,
+        })
+      }
+      else {
+        this.logger.warn('No valid transcription from multi-user processing')
+      }
+    }
+    catch (error) {
+      this.logger.withError(error).error('Error processing multi-user transcription')
     }
   }
 
@@ -518,6 +905,18 @@ export class VoiceManager extends EventEmitter {
 
     audioPlayer.stop()
     audioPlayer.removeAllListeners()
+
+    // Unsubscribe if we have an active subscription
+    if (this.activeSubscription) {
+      try {
+        this.activeSubscription.unsubscribe()
+      }
+      catch (e) {
+        // Ignore unsubscribe errors
+      }
+      this.activeSubscription = null
+    }
+
     if (audioPlayer === this.activeAudioPlayer) {
       this.activeAudioPlayer = null
     }
@@ -530,10 +929,24 @@ export class VoiceManager extends EventEmitter {
         return await interaction.reply('Please join a voice channel first.')
       }
 
+      // Defer the interaction immediately to prevent timeout
+      await interaction.deferReply()
       await this.joinChannel(interaction, currVoiceChannel)
     }
     catch (error) {
       this.logger.withError(error).log('Error joining voice channel')
+      // Try to send error message if interaction hasn't been replied to
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: 'Failed to join voice channel.', ephemeral: true })
+        }
+        else if (interaction.deferred) {
+          await interaction.editReply('Failed to join voice channel.')
+        }
+      }
+      catch (e) {
+        this.logger.withError(e).log('Failed to send error reply')
+      }
     }
   }
 
