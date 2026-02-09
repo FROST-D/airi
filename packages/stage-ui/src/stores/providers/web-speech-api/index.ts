@@ -95,6 +95,12 @@ export function createWebSpeechAPIProvider(): TranscriptionProviderWithExtraOpti
           recognition.interimResults = extraOptions?.interimResults ?? true
           recognition.maxAlternatives = extraOptions?.maxAlternatives ?? 1
 
+          console.info('Web Speech API configured for fetch transcription:', {
+            lang: recognition.lang,
+            continuous: recognition.continuous,
+            interimResults: recognition.interimResults,
+          })
+
           recognition.onresult = (event: any) => {
             let finalTranscript = ''
 

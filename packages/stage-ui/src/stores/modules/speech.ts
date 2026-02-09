@@ -171,6 +171,7 @@ export const useSpeechStore = defineStore('speech', () => {
     voice: string,
     providerConfig: Record<string, any> = {},
   ): Promise<ArrayBuffer> {
+    console.info(`Generating speech with provider: ${provider.name}, model: ${model}, voice: ${voice}, language: ${activeLanguage.value}`)
     const response = await generateSpeech({
       ...provider.speech(model, {
         ...providerConfig,

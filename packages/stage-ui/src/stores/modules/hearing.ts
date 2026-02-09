@@ -183,6 +183,7 @@ export const useHearingStore = defineStore('hearing-store', () => {
       throw new Error('File input is required for transcription.')
     }
 
+    console.info(`Generating transcription with provider: ${provider.name}, model: ${model}, language: ${activeLanguage.value}, file: ${normalizedInput.file?.name}`, options?.providerOptions)
     const response = await generateTranscription({
       ...provider.transcription(model, options?.providerOptions),
       file: normalizedInput.file,
@@ -519,6 +520,7 @@ export const useHearingSpeechInputPipeline = defineStore('modules:hearing:speech
           }
         }
 
+        console.info('Starting Web Speech API transcription session with language:', language)
         const result = streamWebSpeechAPITranscription(stream, {
           language,
           continuous: (options?.providerOptions?.continuous as boolean) ?? (providerConfig.continuous as boolean) ?? true,

@@ -269,8 +269,10 @@ export class Client<C = undefined> {
       }
 
       this.opts.onAnyMessage?.(data)
+      console.debug(`[Client] Received event of type '${data.type}', listener count: ${this.eventListeners.get(data.type)?.size ?? 0}`)
       const listeners = this.eventListeners.get(data.type)
       if (!listeners?.size) {
+        console.debug(`[Client] No listeners registered for event type '${data.type}'`)
         return
       }
 
@@ -296,8 +298,10 @@ export class Client<C = undefined> {
     if (!listeners) {
       listeners = new Set()
       this.eventListeners.set(event, listeners)
+      console.debug(`[Client] Created new listener set for event type '${String(event)}'`)
     }
     listeners.add(callback as any)
+    console.debug(`[Client] Added listener for event type '${String(event)}', total listeners: ${listeners.size}`)
   }
 
   offEvent<E extends keyof WebSocketEvents<C>>(

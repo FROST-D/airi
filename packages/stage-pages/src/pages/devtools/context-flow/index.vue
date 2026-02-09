@@ -358,6 +358,7 @@ onMounted(() => {
 
   for (const type of serverEventTypes) {
     cleanupFns.push(serverChannelStore.onEvent(type, (event) => {
+      console.debug(`[ContextFlow] Received server event: ${event.type}`, event)
       if (event.type === 'spark:notify') {
         const eventId = (event as WebSocketBaseEvent<'spark:notify', WebSocketEvents['spark:notify']>).data?.id
         if (eventId && !sparkNotifyStates.value.has(eventId)) {
