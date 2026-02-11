@@ -591,12 +591,18 @@ export const useProvidersStore = defineStore('providers', () => {
       defaultOptions: () => ({
         baseUrl: 'http://localhost:1234/v1/',
       }),
-      createProvider: async config => createOpenAI('', (config.baseUrl as string).trim()),
+      createProvider: async config => createOpenAI((config.apiKey as string)?.trim() || '', (config.baseUrl as string).trim()),
       capabilities: {
         listModels: async (config) => {
           try {
+            const headers: HeadersInit = {
+              ...(config.headers as HeadersInit || {}),
+              ...((config.apiKey as string)?.trim() ? { Authorization: `Bearer ${(config.apiKey as string).trim()}` } : {}),
+            }
+
+            console.debug('[providers - lm-studio] Fetching LM Studio models with config:', { baseUrl: config.baseUrl, headers })
             const response = await fetch(`${(config.baseUrl as string).trim()}models`, {
-              headers: (config.headers as HeadersInit) || undefined,
+              headers,
             })
 
             if (!response.ok) {
@@ -635,7 +641,11 @@ export const useProvidersStore = defineStore('providers', () => {
           }
 
           // Check if the LM Studio server is reachable
-          return fetch(`${(config.baseUrl as string).trim()}models`, { headers: (config.headers as HeadersInit) || undefined })
+          const headers: HeadersInit = {
+            ...(config.headers as HeadersInit || {}),
+            ...((config.apiKey as string)?.trim() ? { Authorization: `Bearer ${(config.apiKey as string).trim()}` } : {}),
+          }
+          return fetch(`${(config.baseUrl as string).trim()}models`, { headers })
             .then((response) => {
               const errors = [
                 !response.ok && new Error(`LM Studio server returned non-ok status code: ${response.statusText}`),

@@ -3,6 +3,7 @@ import type { RemovableRef } from '@vueuse/core'
 
 import {
   Alert,
+  ProviderApiKeyInput,
   ProviderBaseUrlInput,
   ProviderBasicSettings,
   ProviderSettingsContainer,
@@ -18,6 +19,15 @@ const providersStore = useProvidersStore()
 const { providers } = storeToRefs(providersStore) as { providers: RemovableRef<Record<string, any>> }
 
 // Define computed properties for credentials
+
+const apiKey = computed({
+  get: () => providers.value[providerId]?.apiKey || '',
+  set: (value) => {
+    if (!providers.value[providerId])
+      providers.value[providerId] = {}
+    providers.value[providerId].apiKey = value
+  },
+})
 
 const baseUrl = computed({
   get: () => providers.value[providerId]?.baseUrl || '',
@@ -53,6 +63,12 @@ const {
         :description="t('settings.pages.providers.common.section.basic.description')"
         :on-reset="handleResetSettings"
       >
+        <ProviderApiKeyInput
+          v-model="apiKey"
+          provider-name="LM Studio"
+          description="Optional: API Key for authentication (leave empty if your LM Studio server doesn't require authentication)"
+          :required="false"
+        />
         <ProviderBaseUrlInput
           v-model="baseUrl"
           placeholder="http://localhost:1234/v1/"
