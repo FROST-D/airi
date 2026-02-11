@@ -21,8 +21,6 @@ docker run -d `
   docker.io/heimoshuiyu/whisper-fastapi:latest `
   --model large-v3
 
-
-
 # run server with XTTS-v2
 docker pull ghcr.io/coqui-ai/tts
 docker run --rm -it `

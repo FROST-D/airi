@@ -50,12 +50,12 @@ export const useVisionOrchestratorStore = defineStore('vision-orchestrator', () 
       const workload = getVisionWorkload(payload.workloadId)
       const content: CommonContentPart[] = [
         { type: 'text', text },
-        {
-          type: 'image_url',
-          image_url: {
-            url: payload.imageDataUrl,
-          },
-        },
+        // {
+        //   type: 'image_url',
+        //   image_url: {
+        //     url: payload.imageDataUrl,
+        //   },
+        // },
       ]
 
       console.debug('Publishing vision context update:', { text, content })
