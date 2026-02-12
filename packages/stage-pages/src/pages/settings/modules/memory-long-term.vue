@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { WIP } from '@proj-airi/stage-ui/components'
+import LongTermSection from '../memory/components/LongTermSection.vue'
 </script>
 
 <template>
-  <WIP />
+  <LongTermSection />
 </template>
 
 <route lang="yaml">

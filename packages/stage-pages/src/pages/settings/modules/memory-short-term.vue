@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { WIP } from '@proj-airi/stage-ui/components'
+import ShortTermSection from '../memory/components/ShortTermSection.vue'
 </script>
 
 <template>
-  <WIP />
+  <ShortTermSection />
 </template>
 
 <route lang="yaml">
