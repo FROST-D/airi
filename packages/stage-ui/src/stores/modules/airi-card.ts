@@ -276,6 +276,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
         card.systemPrompt,
         card.description,
         card.personality,
+        card.postHistoryInstructions,
       ].filter(Boolean)
 
       return components.join('\n')
