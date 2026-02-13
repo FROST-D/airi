@@ -91,6 +91,7 @@ function buildApp({ auth, characterService, chatService, providerService }: AppD
 export type AppType = ReturnType<typeof buildApp>
 
 async function createApp() {
+  console.log('[app] Starting server...')
   initLogger(LoggerLevel.Debug, LoggerFormat.Pretty)
   injeca.setLogger(createLoggLogger(useLogger('injeca').useGlobalConfig()))
 

@@ -34,6 +34,7 @@ export class LocalRedisShortTermMemoryProvider extends BaseShortTermMemoryProvid
   }
 
   protected async onInitialize(): Promise<void> {
+    console.info('[LocalRedisShortTermMemoryProvider] Initializing Redis connection...')
     let attempt = 0
 
     while (attempt <= this.maxRetryAttempts) {
@@ -62,6 +63,7 @@ export class LocalRedisShortTermMemoryProvider extends BaseShortTermMemoryProvid
     maxRetryAttempts: number,
     retryDelayMs: number,
   ): Redis {
+    console.info('[LocalRedisShortTermMemoryProvider] Creating Redis client with options:', options.connection)
     const redis = new Redis({
       lazyConnect: true,
       ...options.connection,

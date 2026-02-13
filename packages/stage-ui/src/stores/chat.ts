@@ -103,6 +103,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     generation: number,
     sessionId: string,
   ) {
+    console.debug('[ChatOrchestrator -> performSend] Starting send operation', { sendingMessage, options, generation, sessionId })
     if (!sendingMessage && !options.attachments?.length)
       return
 
@@ -179,10 +180,14 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
 
       const parser = useLlmmarkerParser({
         onLiteral: async (literal) => {
+          console.debug('[ChatOrchestrator -> onLiteral] Received literal:', { literal, streamPosition })
           if (shouldAbort())
             return
 
           categorizer.consume(literal)
+          console.debug('[ChatOrchestrator -> onLiteral] Categorizer state after consuming literal:', {
+            categorizerState: categorizer,
+          })
 
           const speechOnly = categorizer.filterToSpeech(literal, streamPosition)
           streamPosition += literal.length
@@ -293,10 +298,12 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
       if (shouldAbort())
         return
 
+      console.debug('[ChatOrchestrator -> performSend] Starting LLM stream', { model: options.model, chatProvider: options.chatProvider, newMessages, headers, tools: options.tools })
       await llmStore.stream(options.model, options.chatProvider, newMessages as Message[], {
         headers,
         tools: options.tools,
         onStreamEvent: async (event: StreamEvent) => {
+          console.debug('[ChatOrchestrator -> onStreamEvent] Received stream event', { event })
           switch (event.type) {
             case 'tool-call':
               toolCallQueue.enqueue({
@@ -364,6 +371,7 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
     const sessionId = targetSessionId || activeSessionId.value
     const generation = chatSession.getSessionGeneration(sessionId)
 
+    console.debug('[ChatOrchestrator] Enqueuing message for sending', { sendingMessage, options, sessionId, generation })
     return new Promise<void>((resolve, reject) => {
       sendQueue.enqueue({
         sendingMessage,

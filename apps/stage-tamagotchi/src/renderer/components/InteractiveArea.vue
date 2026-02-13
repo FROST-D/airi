@@ -50,6 +50,7 @@ async function handleSend() {
 
   try {
     const providerConfig = providersStore.getProviderConfig(activeProvider.value)
+    console.log('[Chat -> InteractiveArea -> handleSend] Sending message with attachments', { textToSend, attachmentsToSend, providerConfig, activeModel: activeModel.value, activeProvider: activeProvider.value })
     await ingest(textToSend, {
       model: activeModel.value,
       chatProvider: await providersStore.getProviderInstance<ChatProvider>(activeProvider.value),
