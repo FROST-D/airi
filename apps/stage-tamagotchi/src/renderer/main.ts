@@ -4,6 +4,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import Tres from '@tresjs/core'
 
 import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
+import { setMemoryMultilevelInvokers } from '@proj-airi/stage-ui/stores/memory-multilevel'
 import { MotionPlugin } from '@vueuse/motion'
 import { createPinia } from 'pinia'
 import { setupLayouts } from 'virtual:generated-layouts'
@@ -14,11 +15,10 @@ import { routes } from 'vue-router/auto-routes'
 import App from './App.vue'
 
 import { i18n } from './modules/i18n'
+import { getMemoryMultilevelInvokers } from './stores/memory-multilevel-ipc'
 
-import './modules/posthog'
-
-// eslint-disable-next-line perfectionist/sort-imports
 import '@unocss/reset/tailwind.css'
+import './modules/posthog'
 import 'splitpanes/dist/splitpanes.css'
 import 'vue-sonner/style.css'
 import './styles/main.css'
@@ -45,6 +45,9 @@ const router = createRouter({
   // TODO: vite-plugin-vue-layouts is long deprecated, replace with another layout solution
   routes: setupLayouts(routes as RouteRecordRaw[]),
 })
+
+// Initialize memory multilevel IPC invokers
+setMemoryMultilevelInvokers(getMemoryMultilevelInvokers())
 
 createApp(App)
   .use(MotionPlugin)

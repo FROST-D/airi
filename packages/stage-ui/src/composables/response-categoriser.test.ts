@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createStreamingCategorizer } from './response-categoriser'
+import { createStreamingCategorizer, preprocessRoleplayFormat } from './response-categoriser'
 
 describe('createStreamingCategorizer', () => {
   it('should handle pure speech without tags', () => {
@@ -356,5 +356,49 @@ describe('createStreamingCategorizer', () => {
 
     const result = categorizer.end()
     expect(result.speech).toBe('Hello world!')
+  })
+})
+
+describe('preprocessRoleplayFormat', () => {
+  it('should remove {{RESPONSE_AGENT}}: prefix', () => {
+    const input = '{{RESPONSE_AGENT}}: Ciao! Sono AIRI.'
+    const result = preprocessRoleplayFormat(input)
+    expect(result).toBe('Ciao! Sono AIRI.')
+  })
+
+  it('should remove {{char}}: prefix', () => {
+    const input = '{{char}}: Hello there!'
+    const result = preprocessRoleplayFormat(input)
+    expect(result).toBe('Hello there!')
+  })
+
+  it('should remove {{user}} markers in text', () => {
+    const input = 'Hello {{user}}, how are you?'
+    const result = preprocessRoleplayFormat(input)
+    expect(result).toBe('Hello , how are you?')
+  })
+
+  it('should handle response from user example', () => {
+    const input = '{{RESPONSE_AGENT}}: Ciao! Sono AIRI, una tua amica virtuale.'
+    const result = preprocessRoleplayFormat(input)
+    expect(result).toBe('Ciao! Sono AIRI, una tua amica virtuale.')
+  })
+
+  it('should handle prefix without colon', () => {
+    const input = '{{RESPONSE_AGENT}} Hello there'
+    const result = preprocessRoleplayFormat(input)
+    expect(result).toBe('Hello there')
+  })
+
+  it('should not affect text without roleplay markers', () => {
+    const input = 'Just a normal message.'
+    const result = preprocessRoleplayFormat(input)
+    expect(result).toBe('Just a normal message.')
+  })
+
+  it('should remove multiple {{}} markers throughout text', () => {
+    const input = 'Hello {{user}}, I am {{char}} and this is {{message}}'
+    const result = preprocessRoleplayFormat(input)
+    expect(result).toBe('Hello , I am  and this is')
   })
 })

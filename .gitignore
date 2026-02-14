@@ -123,3 +123,4 @@ plugins-development
 #ia
 GEMINI.md
 _creds
+.local_env/

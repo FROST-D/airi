@@ -1,0 +1,38 @@
+{
+  "name": "@proj-airi/memory-multilevel",
+  "type": "module",
+  "version": "0.2.0",
+  "description": "Advanced multilevel memory system for AIRI with L0 (working set), L1 (episodic), L2 (semantic), and L3 (knowledge base) support, featuring hybrid search and MCP integration",
+  "author": {
+    "name": "Moeru AI Project AIRI Team",
+    "email": "airi@moeru.ai",
+    "url": "https://github.com/moeru-ai"
+  },
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "README.md",
+    "dist",
+    "package.json",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.2",
+    "openai": "^4.83.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
+  }
+}

@@ -9,6 +9,7 @@ import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models
 import { useModsServerChannelStore } from '@proj-airi/stage-ui/stores/mods/api/channel-server'
 import { useContextBridgeStore } from '@proj-airi/stage-ui/stores/mods/api/context-bridge'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
+import { useMemoryIntegrationStore } from '@proj-airi/stage-ui/stores/modules/memory-integration'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { usePerfTracerBridgeStore } from '@proj-airi/stage-ui/stores/perf-tracer-bridge'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
@@ -34,6 +35,7 @@ const onboardingStore = useOnboardingStore()
 const router = useRouter()
 const route = useRoute()
 const cardStore = useAiriCardStore()
+const memoryIntegrationStore = useMemoryIntegrationStore()
 const chatSessionStore = useChatSessionStore()
 const serverChannelStore = useModsServerChannelStore()
 const characterOrchestratorStore = useCharacterOrchestratorStore()
@@ -56,6 +58,15 @@ onMounted(async () => {
   analyticsStore.initialize()
   console.debug(' [StageTamagotchi->App.vue] Analytics store initialized')
   cardStore.initialize()
+
+  // Initialize memory integration (will auto-init when memory system is ready)
+  if (memoryIntegrationStore.enabled) {
+    memoryIntegrationStore.initialize().catch(err =>
+      console.warn('[StageTamagotchi->App.vue] Memory integration initialization deferred or failed:', err),
+    )
+    console.debug(' [StageTamagotchi->App.vue] Memory Integration store initialization started')
+  }
+
   console.debug(' [StageTamagotchi->App.vue] Airi Card store initialized')
   onboardingStore.initializeSetupCheck()
   console.debug(' [StageTamagotchi->App.vue] Onboarding store initialized')

@@ -207,6 +207,11 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
                 text: speechOnly,
               })
             }
+            console.debug('[ChatOrchestrator] Updated message content:', {
+              contentLength: (buildingMessage.content || '').length,
+              slicesCount: buildingMessage.slices.length,
+              lastSliceType: lastSlice?.type,
+            })
             updateUI()
           }
         },
@@ -237,12 +242,24 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             if (shouldAbort())
               return
             if (ctx.data.type === 'tool-call') {
+              const toolCall = ctx.data.toolCall
+              console.group('%c🔧 Tool Call', 'background: #4CAF50; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold')
+              console.log('%cTool Name:', 'font-weight: bold; color: #2196F3', toolCall.toolName)
+              console.log('%cArguments:', 'font-weight: bold; color: #FF9800', toolCall.args)
+              console.log('%cCall ID:', 'font-weight: bold; color: #9E9E9E', toolCall.toolCallId)
+              console.groupEnd()
+
               buildingMessage.slices.push(ctx.data)
               updateUI()
               return
             }
 
             if (ctx.data.type === 'tool-call-result') {
+              console.group('%c✅ Tool Result', 'background: #2196F3; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold')
+              console.log('%cCall ID:', 'font-weight: bold; color: #9E9E9E', ctx.data.id)
+              console.log('%cResult:', 'font-weight: bold; color: #4CAF50', ctx.data.result)
+              console.groupEnd()
+
               buildingMessage.tool_results.push(ctx.data)
               updateUI()
             }
@@ -306,6 +323,16 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
           console.debug('[ChatOrchestrator -> onStreamEvent] Received stream event', { event })
           switch (event.type) {
             case 'tool-call':
+              console.log('%c⚡ LLM Tool Call Initiated', 'background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px')
+              console.log('%c→ Tool:', 'color: #667eea; font-weight: bold', event.toolName)
+              try {
+                const args = JSON.parse(event.args)
+                console.table(args)
+              }
+              catch {
+                console.log('%c→ Args:', 'color: #FF9800; font-weight: bold', event.args)
+              }
+
               toolCallQueue.enqueue({
                 type: 'tool-call',
                 toolCall: event,
@@ -313,6 +340,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
 
               break
             case 'tool-result':
+              console.log('%c⚡ LLM Tool Result Received', 'background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%); color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px')
+
               toolCallQueue.enqueue({
                 type: 'tool-call-result',
                 id: event.toolCallId,
@@ -323,6 +352,11 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
             case 'text-delta':
               fullText += event.text
               await parser.consume(event.text)
+              console.debug('[ChatOrchestrator] Text delta received:', {
+                text: event.text.substring(0, 50),
+                fullTextLength: fullText.length,
+                slicesCount: buildingMessage.slices.length,
+              })
               break
             case 'finish':
               break

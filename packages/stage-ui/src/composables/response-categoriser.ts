@@ -1,3 +1,36 @@
+/**
+ * Response categorizer for LLM outputs
+ *
+ * This module processes LLM responses to separate speech content from internal reasoning/thinking,
+ * and to remove roleplay formatting markers.
+ *
+ * ## Handled Formats
+ *
+ * ### 1. XML Tags (filtered from speech, treated as reasoning)
+ * Examples: `<thinking>...`, `<reasoning>...`, `<thought>...`, `<RESPONSE>...</RESPONSE>`
+ * These are extracted and categorized as "reasoning" - not displayed to user or sent to TTS.
+ *
+ * ### 2. Roleplay Formatting Markers (removed entirely)
+ * Examples: `{{RESPONSE_AGENT}}:`, `{{char}}:`, `{{user}}`, `{{message}}`
+ * These are stripped using `preprocessRoleplayFormat()` in the streaming categorizer.
+ *
+ * ## Example Input
+ * ```
+ * {{RESPONSE_AGENT}}: Ciao! Sono AIRI. <thinking>Should I be more friendly?</thinking> Come stai? <RESPONSE>AI</RESPONSE>
+ * ```
+ *
+ * ## Example Output
+ * ```typescript
+ * {
+ *   speech: "Ciao! Sono AIRI. Come stai?",
+ *   reasoning: "Should I be more friendly?\n\nAI",
+ *   segments: [...]
+ * }
+ * ```
+ *
+ * The `speech` field contains only what should be displayed/spoken to the user.
+ */
+
 import type { Element, Root } from 'hast'
 import type { Position } from 'unist'
 
@@ -23,6 +56,80 @@ export interface CategorizedResponse {
   speech: string // Combined speech content (everything outside tags)
   reasoning: string // Combined reasoning/thought content
   raw: string // Original full response
+}
+
+/**
+ * Preprocesses LLM responses to remove roleplay/formatting markers that are not XML tags
+ * Handles patterns like:
+ * - {{RESPONSE_AGENT}}: prefix
+ * - {{user}}/{{char}} or similar roleplay markers
+ *
+ * Note: XML-style tags like <RESPONSE>, <thinking>, etc. are handled by the main categorizer
+ */
+export function preprocessRoleplayFormat(response: string): string {
+  const original = response
+  let cleaned = response
+
+  // Remove roleplay prefix patterns at the start of the response
+  // Handles: {{RESPONSE_AGENT}}:, {{RESPONSE_AGENT}}, {{char}}:, etc.
+  cleaned = cleaned.replace(/^\{\{[^}]+\}\}\s*:?\s*/, '')
+
+  // Remove other common roleplay metadata patterns throughout the text
+  // Handles: {{user}}, {{char}}, {{message}}, etc.
+  cleaned = cleaned.replace(/\{\{(?:user|char|message|system|name)\}\}/gi, '')
+
+  // Only trim if we actually removed something
+  return cleaned !== original ? cleaned.trim() : cleaned
+}
+
+export function normalizeForTTS(input: string): string {
+  let text = input
+
+  // 0) Normalize unicode ellipsis to three dots
+  text = text.replace(/\u2026/g, '...')
+
+  // 1) Replace ellipses / many dots with a single period (safer pause)
+  //    "...." "..." ".." -> "."
+  text = text.replace(/\.{2,}/g, '.')
+
+  // 2) Collapse repeated punctuation
+  //    "!!!" -> "!" , ",,," -> "," , "??" -> "?"
+  text = text.replace(/([,!?;:])\1+/g, '$1')
+
+  // 3) Replace repeated dashes with a spaced em dash (optional but helps pacing)
+  //    "--" "———" "––" -> " — "
+  text = text.replace(/[-‐-‒–—]{2,}/g, ' — ')
+
+  // 4) Clean up mixed punctuation runs
+  //    ",." ".," "?!?!" "!!?" etc -> keep one mark, preferring ? then ! then . then ,
+  text = text.replace(/[!?.,]{2,}/g, (run) => {
+    if (run.includes('?'))
+      return '?'
+    if (run.includes('!'))
+      return '!'
+    if (run.includes('.'))
+      return '.'
+    if (run.includes(','))
+      return ','
+    return run[0]
+  })
+
+  // 5) Remove leading punctuation at the start of each line/chunk
+  //    ", ... hello" -> "hello"
+  text = text.replace(/^[\s,.;:!?—–-]+/gm, '')
+
+  // 6) Normalize spacing around punctuation
+  //    "hello ,  world" -> "hello, world"
+  text = text.replace(/\s+([,.;:!?])/g, '$1')
+  text = text.replace(/([,.;:!?])(?=\S)/g, '$1 ')
+
+  // 7) Collapse whitespace
+  text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n')
+
+  // 8) …
+  text = text.replace(/…/g, '-')
+
+  return text.trim()
 }
 
 /**
@@ -309,9 +416,13 @@ export function createStreamingCategorizer(
 
   return {
     consume(chunk: string) {
+      // Preprocess chunk to remove roleplay formatting before processing
+      // Note: We only preprocess if buffer is empty (first chunk) to avoid removing formatting mid-stream
+      const processedChunk = buffer.length === 0 ? preprocessRoleplayFormat(chunk) : chunk
+
       // Process before adding to buffer to detect tag closure in this chunk
-      const tagJustClosed = processChunkIncrementally(chunk)
-      buffer += chunk
+      const tagJustClosed = processChunkIncrementally(processedChunk)
+      buffer += processedChunk
 
       // Re-categorize on first chunk, tag closure, or every 1KB (periodic fallback)
       const shouldRecategorize = !categorized
@@ -366,6 +477,7 @@ export function createStreamingCategorizer(
      */
     filterToSpeech(text: string, startPosition: number): string {
       // Check if we're currently inside an incomplete tag
+      console.debug('[ResponseCategorizer] filterToSpeech called with text:', { text, startPosition, bufferEnd: buffer.length, tagState, tagStackDepth })
       if (checkIncompleteTag()) {
         // Try to find where the tag closes in the combined buffer + text
         const fullText = buffer + text
@@ -411,7 +523,14 @@ export function createStreamingCategorizer(
 
       if (!categorized || categorized.segments.length === 0) {
         // No segments detected, all text is speech
-        return text
+        console.debug('[ResponseCategorizer] No segments detected, treating all text as speech. This may be due to incomplete tags or parsing issues.', { text, startPosition, bufferEnd: buffer.length, tagState, tagStackDepth })
+        console.debug('[ResponseCategorizer] filterToSpeech:', {
+          inputText: text,
+          startPosition,
+          categorized,
+          ttsVersion: normalizeForTTS(text),
+        })
+        return normalizeForTTS(text)
       }
 
       let filtered = ''
@@ -424,8 +543,15 @@ export function createStreamingCategorizer(
       )
 
       if (overlappingSegments.length === 0) {
+        console.debug('[ResponseCategorizer] No overlapping segments found, treating all text as speech. This may be due to incomplete tags or parsing issues.', { text, startPosition, endPosition, categorized })
         // No overlapping segments, all text is speech
-        return text
+        console.debug('[ResponseCategorizer] filterToSpeech:', {
+          inputText: text,
+          startPosition,
+          categorized,
+          ttsVersion: normalizeForTTS(text),
+        })
+        return normalizeForTTS(text)
       }
 
       // Build filtered text by excluding non-speech segments
@@ -451,7 +577,14 @@ export function createStreamingCategorizer(
         filtered += text.slice(afterStart)
       }
 
-      return filtered
+      console.debug('[ResponseCategorizer] filterToSpeech:', {
+        inputText: filtered,
+        startPosition,
+        categorized,
+        ttsVersion: normalizeForTTS(filtered),
+      })
+
+      return normalizeForTTS(filtered)
     },
     getCurrentPosition(): number {
       return buffer.length

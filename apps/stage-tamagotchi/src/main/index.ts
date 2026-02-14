@@ -15,6 +15,7 @@ import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed } from './libs/
 import { setElectronMainDirname } from './libs/electron/location'
 import { setupServerChannelHandlers } from './services/airi/channel-server'
 import { setupAutoUpdater } from './services/electron/auto-updater'
+import { setupMemoryMultilevelService } from './services/memory-multilevel'
 import { setupTray } from './tray'
 import { setupAboutWindowReusable } from './windows/about'
 import { setupBeatSync } from './windows/beat-sync'
@@ -72,6 +73,7 @@ initScreenCaptureForMain()
 app.whenReady().then(async () => {
   injeca.setLogger(createLoggLogger(useLogg('injeca').useGlobalConfig()))
 
+  const memoryMultilevel = injeca.provide('services:memory-multilevel', () => setupMemoryMultilevelService())
   const serverChannel = injeca.provide('modules:channel-server', () => setupServerChannelHandlers())
   const autoUpdater = injeca.provide('services:auto-updater', () => setupAutoUpdater())
   const widgetsManager = injeca.provide('windows:widgets', () => setupWidgetsWindowManager())
@@ -111,7 +113,7 @@ app.whenReady().then(async () => {
   })
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel },
+    dependsOn: { mainWindow, tray, serverChannel, memoryMultilevel },
     callback: noop,
   })
 

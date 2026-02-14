@@ -78,3 +78,108 @@ export { electron } from './electron'
 export * from './electron-updater'
 
 export const modulesVisionPrepareScreenSourceSelection = defineInvokeEventa('eventa:invoke:modules:vision:prepare-screen-source-selection')
+
+// Memory Multilevel Module
+export interface MemoryMultilevelConfig {
+  L0?: {
+    enabled: boolean
+    maxMessages?: number
+    maxSessionSummaryTokens?: number
+    pinnedFactsMaxTokens?: number
+    storage: 'redis' | 'memory'
+    redis?: {
+      host?: string
+      port?: number
+      password?: string
+      namespace?: string
+    }
+  }
+  L1?: {
+    enabled: boolean
+    sessionDurationHours?: number
+    maxMessagesPerSession?: number
+    cacheEnabled?: boolean
+    cacheSize?: number
+    storage: 'redis' | 'postgres' | 'both'
+    redis?: {
+      host?: string
+      port?: number
+      password?: string
+      namespace?: string
+    }
+    postgres?: {
+      connectionString?: string
+      tableName?: string
+    }
+  }
+  L2?: {
+    enabled: boolean
+    chunkSize?: number
+    chunkOverlap?: number
+    hybridSearch?: boolean
+    storage: 'postgres-pgvector' | 'paradedb'
+    embedding?: {
+      provider: 'openai' | 'openai-compatible' | 'cloudflare'
+      apiKey: string
+      model: string
+      baseUrl?: string
+    }
+    postgres?: {
+      connectionString?: string
+      tableName?: string
+      indexType?: 'ivfflat' | 'hnsw'
+    }
+  }
+  L3?: {
+    enabled: boolean
+    chunkSize?: number
+    chunkOverlap?: number
+    hybridSearch?: boolean
+    versioningEnabled?: boolean
+    storage: 'postgres-pgvector' | 'paradedb'
+    embedding?: {
+      provider: 'openai' | 'openai-compatible' | 'cloudflare'
+      apiKey: string
+      model: string
+      baseUrl?: string
+    }
+    postgres?: {
+      connectionString?: string
+      tableName?: string
+      indexType?: 'ivfflat' | 'hnsw'
+    }
+  }
+}
+
+export const memoryMultilevelInitialize = defineInvokeEventa<{ success: boolean, error?: string }, { config: MemoryMultilevelConfig }>('eventa:invoke:memory-multilevel:initialize')
+export const memoryMultilevelGetStatus = defineInvokeEventa<{ initialized: boolean, config?: MemoryMultilevelConfig }, void>('eventa:invoke:memory-multilevel:get-status')
+
+// L0 Working Set Operations
+export const memoryMultilevelL0AddMessage = defineInvokeEventa<void, { sessionId: string, message: any }>('eventa:invoke:memory-multilevel:l0:add-message')
+export const memoryMultilevelL0GetWorkingSet = defineInvokeEventa<any, { sessionId: string }>('eventa:invoke:memory-multilevel:l0:get-working-set')
+export const memoryMultilevelL0SetSessionSummary = defineInvokeEventa<void, { sessionId: string, summary: any }>('eventa:invoke:memory-multilevel:l0:set-session-summary')
+export const memoryMultilevelL0SetPinnedFact = defineInvokeEventa<void, { sessionId: string, fact: any }>('eventa:invoke:memory-multilevel:l0:set-pinned-fact')
+export const memoryMultilevelL0RemovePinnedFact = defineInvokeEventa<void, { sessionId: string, key: string }>('eventa:invoke:memory-multilevel:l0:remove-pinned-fact')
+export const memoryMultilevelL0ClearMessages = defineInvokeEventa<void, { sessionId: string }>('eventa:invoke:memory-multilevel:l0:clear-messages')
+export const memoryMultilevelL0ClearSession = defineInvokeEventa<void, { sessionId: string }>('eventa:invoke:memory-multilevel:l0:clear-session')
+
+// L1 Episodic Memory Operations
+export const memoryMultilevelL1AddMessage = defineInvokeEventa<void, { message: any }>('eventa:invoke:memory-multilevel:l1:add-message')
+export const memoryMultilevelL1GetSession = defineInvokeEventa<any, { sessionId: string }>('eventa:invoke:memory-multilevel:l1:get-session')
+export const memoryMultilevelL1ListActiveSessions = defineInvokeEventa<any[], { userId: string, hours?: number }>('eventa:invoke:memory-multilevel:l1:list-active-sessions')
+export const memoryMultilevelL1SearchInSession = defineInvokeEventa<any[], { sessionId: string, query: string, limit?: number }>('eventa:invoke:memory-multilevel:l1:search-in-session')
+export const memoryMultilevelL1ClearSession = defineInvokeEventa<void, { sessionId: string }>('eventa:invoke:memory-multilevel:l1:clear-session')
+export const memoryMultilevelL1ExpireSessions = defineInvokeEventa<number, { hoursBack: number }>('eventa:invoke:memory-multilevel:l1:expire-sessions')
+
+// L2 Semantic Memory Operations
+export const memoryMultilevelL2AddChunk = defineInvokeEventa<void, { chunk: any }>('eventa:invoke:memory-multilevel:l2:add-chunk')
+export const memoryMultilevelL2SearchHybrid = defineInvokeEventa<any[], { query: string, options?: any }>('eventa:invoke:memory-multilevel:l2:search-hybrid')
+export const memoryMultilevelL2ListBySource = defineInvokeEventa<any[], { sourceType: string, sourceId: string, limit?: number }>('eventa:invoke:memory-multilevel:l2:list-by-source')
+export const memoryMultilevelL2DeleteBySource = defineInvokeEventa<number, { sourceType: string, sourceId: string }>('eventa:invoke:memory-multilevel:l2:delete-by-source')
+
+// L3 Knowledge Base Operations
+export const memoryMultilevelL3AddDocument = defineInvokeEventa<void, { document: any }>('eventa:invoke:memory-multilevel:l3:add-document')
+export const memoryMultilevelL3SearchHybrid = defineInvokeEventa<any[], { query: string, options?: any }>('eventa:invoke:memory-multilevel:l3:search-hybrid')
+export const memoryMultilevelL3ListDocuments = defineInvokeEventa<any[], { filters?: any, limit?: number, offset?: number }>('eventa:invoke:memory-multilevel:l3:list-documents')
+export const memoryMultilevelL3GetDocument = defineInvokeEventa<any, { documentId: string }>('eventa:invoke:memory-multilevel:l3:get-document')
+export const memoryMultilevelL3DeleteDocument = defineInvokeEventa<void, { documentId: string }>('eventa:invoke:memory-multilevel:l3:delete-document')

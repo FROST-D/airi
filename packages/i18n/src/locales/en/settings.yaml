@@ -350,6 +350,9 @@ pages:
     memory-short-term:
       description: Short-term memory specific settings and management
       title: Short-Term Memory
+    memory-multilevel:
+      description: Advanced 4-level memory system (L0-L3) with semantic search
+      title: Multilevel Memory
     messaging-discord:
       description: Chat & voice chat over Discord
       title: Discord
